@@ -17,6 +17,7 @@ import argparse
 from src.model import Model
 from src.iofunc import *
 from param import param
+import pdb
 
 
 # Set default directory and current model paths \_______________________________________________________________________
@@ -246,5 +247,4 @@ if __name__ == '__main__':
 
     # For testing new code \____________________________________________________________________________________________
     if args.test:
-        from src.analysis import Analysis
-        data = Analysis().all_gids(args.test)
+        print('\nNothing for now.\n')
