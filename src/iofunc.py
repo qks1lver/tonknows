@@ -5,10 +5,13 @@ iofunc.py
 """
 
 
-
 # Import
 import pickle
 import code
+from numpy.random import choice
+from shutil import copyfile
+from os import remove
+from importlib import import_module
 
 # Functions
 def open_pkl(p_file):
@@ -41,3 +44,15 @@ def interact(var_desc=None, local=None):
     code.interact(local=local)
 
     return
+
+def loadparam(p_param):
+
+    if p_param:
+        name = ''.join(choice(list('abcdefgh'), 5))
+        p_tmp = 'tmp/%s.py' % name
+        copyfile(p_param, p_tmp)
+        x = import_module('tmp.%s' % name, name)
+        remove(p_tmp)
+        return x.param
+    else:
+        return dict()

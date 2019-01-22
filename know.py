@@ -16,7 +16,6 @@ import os
 import argparse
 from src.model import Model
 from src.iofunc import *
-from param import param
 import pdb
 
 
@@ -59,7 +58,7 @@ if __name__ == '__main__':
     parser.add_argument('--multilayer', dest='multilayer', action='store_true', help='Train multilayer')
     parser.add_argument('--onlylabels', dest='only_labs', default='', help='Labels to use exclusively, comma separated')
     parser.add_argument('--notlabels', dest='not_labs', default='', help='Labels to exclude, comma separated')
-    parser.add_argument('--param', dest='param', action='store_true', help='Use param file')
+    parser.add_argument('--param', dest='param', default='', help='Use param file')
     parser.add_argument('--kcv', dest='kcv', default=10, type=int, help='Number of CV k-fold, minimum 3')
     parser.add_argument('--plot', dest='to_plot', action='store_true', help='To plot when it can plot')
     parser.add_argument('--nrep', dest='n_repeat', default=3, type=int, help='N times to repeat train/eval')
@@ -82,6 +81,9 @@ if __name__ == '__main__':
 
     # Initialize variable description in case going into interactive mode
     vd = {}
+
+    # Import param
+    param = loadparam(args.param)
 
     # Train --------------------------------------------------------------------------------------------------------
     if args.train_data:
