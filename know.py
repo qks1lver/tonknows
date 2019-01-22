@@ -20,11 +20,11 @@ import pdb
 
 
 # Set default directory and current model paths \_______________________________________________________________________
-# locpred directory
-_d_locpred_ = os.path.realpath(os.path.split(__file__)[0]) + '/'
+# tonknows directory
+_d_tonknows_ = os.path.realpath(os.path.split(__file__)[0]) + '/'
 
-# locpred models directory
-_d_model_ = _d_locpred_ + 'models/'
+# tonknows models directory
+_d_model_ = _d_tonknows_ + 'models/'
 if not os.path.isdir(_d_model_):
     os.makedirs(_d_model_)
 
@@ -35,11 +35,8 @@ for p in os.listdir(_d_model_):
         _p_current_model_ = _d_model_ + p
         break
 
-# PMN directory
-_d_pmn_ = _d_locpred_ + 'data/PMN/'
-
 # tmp directory
-_d_tmp_ = _d_locpred_ + 'tmp/'
+_d_tmp_ = _d_tonknows_ + 'tmp/'
 if not os.path.isdir(_d_tmp_):
     os.makedirs(_d_tmp_)
 
@@ -83,7 +80,7 @@ if __name__ == '__main__':
     vd = {}
 
     # Import param
-    param = loadparam(args.param)
+    param = loadparam(args.param, _d_tmp_)
 
     # Train --------------------------------------------------------------------------------------------------------
     if args.train_data:

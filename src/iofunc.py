@@ -8,10 +8,11 @@ iofunc.py
 # Import
 import pickle
 import code
+from os import remove
 from numpy.random import choice
 from shutil import copyfile
-from os import remove
 from importlib import import_module
+
 
 # Functions
 def open_pkl(p_file):
@@ -45,11 +46,11 @@ def interact(var_desc=None, local=None):
 
     return
 
-def loadparam(p_param):
+def loadparam(p_param, d_tmp):
 
     if p_param:
         name = ''.join(choice(list('abcdefgh'), 5))
-        p_tmp = 'tmp/%s.py' % name
+        p_tmp = '%s%s.py' % (d_tmp, name)
         copyfile(p_param, p_tmp)
         x = import_module('tmp.%s' % name, name)
         remove(p_tmp)
