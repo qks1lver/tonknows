@@ -15,7 +15,6 @@ def warn(*args, **kwargs):
     pass
 import warnings
 warnings.warn = warn
-warnings.filterwarnings("ignore",category =RuntimeWarning)
 
 # Imports
 import os
@@ -1392,8 +1391,10 @@ class Data:
         for n in self.nidx_train:
             x.append(1 if lidx0 in self.nidx2lidx[n] else 0)
 
-        pvals = [spearmanr(x, yi).pvalue for yi in np.transpose(y)]
-        pvals = np.array([v if not np.isnan(v) else 1. for v in pvals])
+        if np.any(x):
+            pvals = np.array([spearmanr(x, yi)[1] if np.any(yi) else 1. for yi in np.transpose(y)])
+        else:
+            return False
 
         return np.any(pvals < self.spearman_cutoff)
 
