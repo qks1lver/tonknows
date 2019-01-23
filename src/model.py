@@ -10,16 +10,18 @@ MIT License. Copyright 2018 Jiun Y. Yen (jiunyyen@gmail.com)
 
 
 
-# Suppress scikit-learn warnings - warnings have been previously evaluated
+# Suppress warnings - warnings have been previously evaluated to be okay
 def warn(*args, **kwargs):
     pass
 import warnings
 warnings.warn = warn
+warnings.filterwarnings("ignore",category =RuntimeWarning)
 
 # Imports
 import os
 import numpy as np
 import pandas as pd
+from scipy.stats import spearmanr
 from scipy.optimize import minimize
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, StratifiedKFold
@@ -75,7 +77,7 @@ class Model:
 
         # Initialize classifiers
         self.clf_net = RandomForestClassifier(
-            n_estimators=200,
+            n_estimators=400,
             max_features=None,
             min_impurity_decrease=0.000001,
             class_weight='balanced_subsample',
@@ -85,7 +87,7 @@ class Model:
         self.clf_opt = RandomForestClassifier(
             n_estimators=0,
             max_features=None,
-            min_samples_leaf=3,
+            min_impurity_decrease=0.001,
             class_weight='balanced_subsample',
             warm_start=True,
             n_jobs=os.cpu_count()
@@ -846,6 +848,8 @@ class Model:
 
         r = minimize(self._clf_inf_train, np.array([0.05]), nidx_target, method='cobyla', jac='3-point')
         self.maxinflidxratio = r.x[0]
+        if self.verbose:
+            print('  maxinflidxratio = %.4f' % self.maxinflidxratio)
 
         return
 
@@ -1016,6 +1020,7 @@ class Data:
         self.min_network_size = min_network_size
         self.maxlidxratio = 0.25
         self.minlinkfreq = 1
+        self.spearman_cutoff = 0.1
 
         self.nidx_train = []
         self.nidx_pred = []
@@ -1059,6 +1064,7 @@ class Data:
         self.maxlidxratio = data.maxlidxratio
         self.minlinkfreq = data.minlinkfreq
         self.masklayer = data.masklayer
+        self.spearman_cutoff = data.spearman_cutoff
 
         return
 
@@ -1259,11 +1265,7 @@ class Data:
     def gen_match_table(self, nidx_target=None):
 
         """
-        Construct the link-to-label lookup table for the link-matching classifier. The localization data
-        are annotated to the nodes. There are links that are consistently catalyzed in nodes of particular
-        labels. These links are types of links that are collected into this table, along with the
-        labels that they are consistently found in. Currently, this includes the links that are in only one
-        node. For this reason, all of the links that are only in one node are in this table.
+        Construct the link-to-label lookup table for the link-matching classifier.
 
         :param nidx_target: Optional, list of node indices to construct the table with
         :return: Dictionary of link indices to label names
@@ -1347,14 +1349,53 @@ class Data:
 
     def build_link2featidx(self):
 
-        fidx = 0
-        for l in self.nidx_train:
-            for n in self.nidx2lidx[l]:
-                if self.links[n] not in self.link2featidx:
-                    self.link2featidx[self.links[n]] = fidx
-                    fidx += 1
+        if self.verbose:
+            print('First time compiling features, can take up to a few minutes ...')
+
+        fidx = self._build_link2featidx()
+
+        while not self.link2featidx and self.spearman_cutoff <= 0.4:
+            print('  Could not compile features, try relaxing Spearman cutoff %.2f -> %.2f' % (self.spearman_cutoff, self.spearman_cutoff * 2))
+            self.spearman_cutoff *= 2
+            fidx = self._build_link2featidx()
+
+        if not self.link2featidx:
+            print('  Compiling features without Spearman correlation')
+            fidx = self._build_link2featidx(spearman=False)
+
+        if self.verbose:
+            print('  Compiled %d features' % fidx)
 
         return self
+
+    def _build_link2featidx(self, spearman=True):
+
+        y = self.gen_labels()
+        fidx = 0
+        self.link2featidx = {}
+        for n in self.nidx_train:
+            for l in self.nidx2lidx[n]:
+                if self.links[l] not in self.link2featidx:
+                    if spearman:
+                        if self.eval_link(lidx0=l, y=y):
+                            self.link2featidx[self.links[l]] = fidx
+                            fidx += 1
+                    else:
+                        self.link2featidx[self.links[l]] = fidx
+                        fidx += 1
+
+        return fidx
+
+    def eval_link(self, lidx0, y):
+
+        x = []
+        for n in self.nidx_train:
+            x.append(1 if lidx0 in self.nidx2lidx[n] else 0)
+
+        pvals = [spearmanr(x, yi).pvalue for yi in np.transpose(y)]
+        pvals = np.array([v if not np.isnan(v) else 1. for v in pvals])
+
+        return np.any(pvals < self.spearman_cutoff)
 
     def build_lidx2featidx(self):
 
