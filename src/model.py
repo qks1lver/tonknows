@@ -890,21 +890,23 @@ class Model:
 
         if self.aim is not None:
             ypred = self._predict_proba(self.clf_opt, X=X)
-            r = minimize(self._opt_round_cutoff, np.array([0.5]), (y, ypred), method='cobyla', jac='3-point')
+            ybkg = self.bkg_predict(n_samples=len(X))
+            r = minimize(self._opt_round_cutoff, np.array([0.5]), (y, ypred, ybkg), method='cobyla', jac='3-point')
             self.round_cutoff_history.append(r.x[0])
             self.round_cutoff = np.median(self.round_cutoff_history)
             print('Optimal [%s] round_cutoff=%.4f' % (self.aim, self.round_cutoff))
 
         return
 
-    def _opt_round_cutoff(self, x, y, ypred):
+    def _opt_round_cutoff(self, x, y, ypred, ybkg):
 
         self.round_cutoff = x
 
         r = self._scores(y, ypred)
+        rbkg = self._scores(y, ybkg)
         c = self._calc_coverage(ypred)
 
-        return -r[self.aim] * c * r['f1']
+        return -(r[self.aim] - rbkg[self.aim]) * c * np.ceil(x)
 
     @staticmethod
     def _check_train_labels(X, y):
