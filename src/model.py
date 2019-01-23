@@ -42,7 +42,7 @@ class Model:
 
         :param data: Optional, string or list of strings of the path(s) of data files
         :param exclude_links: Optional, list of string(s) of link names to exclude to building network connections
-        :param labels: Optional, list of string(s) of compartment names to exclude from training
+        :param labels: Optional, list of string(s) of label names to exclude from training
         :param verbose: Optional, Boolean for whether to verbose
         """
 
@@ -373,15 +373,15 @@ class Model:
         yidx = np.sum(self.datas[self.train_idx].gen_labels(), axis=0) < self.kfold_cv
         if np.any(yidx):
             xlist = ','.join(np.array(self.datas[self.train_idx].labels)[yidx])
-            print('\n  *** WARNING ***\n  There are compartments with very few samples: %s' % xlist)
-            print('  If encounter chaotic errors, consider excluding these compartments using --excludeloc %s\n' % xlist)
+            print('\n  *** WARNING ***\n  There are labels with very few samples: %s' % xlist)
+            print('  If encounter chaotic errors, consider excluding these labels using --excludeloc %s\n' % xlist)
 
         return
 
     def eval(self, data=None):
 
         """
-        Evaluate any samples in a Data object that has compartment information.
+        Evaluate any samples in a Data object that has label information.
 
         :param data: Optional. A Data class object. Must be loaded with data by running Data.build(). If None, then
         the first non-train data will be used. If nothnig is in that, then no evaluation.
@@ -421,7 +421,7 @@ class Model:
     def predict(self, data=None, p_out=''):
 
         """
-        The is predicting with a prediction data or the specified Data object. If there are nodes with compartment
+        The is predicting with a prediction data or the specified Data object. If there are nodes with label
         labels, they will be used to perform an evaluation to estimate how the model could perform for this dataset.
         A report will also be generated with the final predictions for all the nodes, including the labeled and the
         non-labeled.
@@ -468,7 +468,7 @@ class Model:
 
             labels = np.array(data.labels)
             with open(p_out, 'w+') as f:
-                _ = f.write('nodes\tknown_labels\tpredictions\tmerged\n')
+                _ = f.write('%s\tknown_labels\tpredictions\tmerged\n' % self.columns['nodes'])
 
                 # Write predictions
                 for r, yopt in zip(predictions['nidx'], predictions['yopt']):
@@ -493,20 +493,20 @@ class Model:
 
         """
         This runs predictions with all base classifiers and the final model for the nodes specified through their
-        indices in a Data object. It is possible that the final model does not predict any compartments for a sample
+        indices in a Data object. It is possible that the final model does not predict any labels for a sample
         either because the base classifiers cannot work with such sample or the predictions from the base classifiers
-        does not lead to any compartments predicted by the final model. In the latter case, if any of the base
+        does not lead to any labels predicted by the final model. In the latter case, if any of the base
         classifiers do generate a prediction, this function could attempt to "fill" this type of samples with the joint
-        predictions from all the base classifiers. The proportion of data that has compartments predicted for (coverage)
+        predictions from all the base classifiers. The proportion of data that has labels predicted for (coverage)
         and "filled" will be displayed if verbose is enabled.
 
         :param nidx_target: A Python list of indices of nodes in the Data object
         :param data: Optional, Data object loaded with dataset to predict for. If None, then .train_data is used
         :param to_eval: Optional, Boolean to specify whether this is running an evaluation or prediction
         :param fill: Optional, Boolean to specify whether to use predictions from the base classifiers to fill samples
-        that the final model did not predict any compartments for. Even with True, it does not guarantee a prediction
+        that the final model did not predict any labels for. Even with True, it does not guarantee a prediction
         will be given, since the base classifiers may not be able to predict for the sample or may not predict any
-        compartments for the sample as well.
+        labels for the sample as well.
         :return: A dictionary containing predictions from all the base classifiers and the final model
         """
 
@@ -586,7 +586,7 @@ class Model:
 
             if not np.all(r['label_ratios']):
                 locs = ', '.join([self.datas[self.train_idx].labels[i] for i, j in enumerate(r['label_ratios']) if j > 0])
-                print('** This evaluation only represents compartments: %s' % locs)
+                print('** This evaluation only represents labels: %s' % locs)
 
         else:
             # header
@@ -789,7 +789,7 @@ class Model:
     def _calc_coverage(y):
 
         """
-        Calculate the coverage - the proportion of data that has compartments predicted.
+        Calculate the coverage - the proportion of data that has labels predicted.
 
         :param y: A numpy array of predictions from any of the classifiers
         :return: A float point variable of the calculated coverage
@@ -898,8 +898,8 @@ class Model:
     def _scores(self, y, y_pred):
 
         """
-        Compute the performance metrics, which include AUC-ROC, precision, AUC-ROC of each compartment, precision of
-        each compartment, as well as the proportion of data known to a label (based on the truth).
+        Compute the performance metrics, which include AUC-ROC, precision, AUC-ROC of each label, precision of
+        each label, as well as the proportion of data known to a label (based on the truth).
 
         :param y: A numpy array of true labels
         :param y_pred: A numpy array of predicted labels by any of the classifiers
@@ -979,13 +979,13 @@ class Data:
 
         :param p_data: Optional, string of the path of the TDF file
         :param exclude_links: Optional, list of string(s) of link names to exclude to building network connections
-        :param labels: Optional, list of string(s) of compartment names to exclude from training
+        :param labels: Optional, list of string(s) of label names to exclude from training
         :param k_neighbors: Optional, integer that indicates the radius of neighorhood to include nodes to generate
         the NET classifier's features
         :param min_network_size: Optional, integer that indicates the minimum number of nodes required to be a
         useful subnetwork, which will be combined with all other subnetwork that possibly exists with the dataset
         :param verbose: Optional, Boolean for whether to verbose
-        :param lab_other: Optional, list of compartment names to be grouped as "others"
+        :param lab_other: Optional, list of label names to be grouped as "others"
         """
 
         self._header_ = 'Data.'
@@ -1065,7 +1065,7 @@ class Data:
     def read_data(self, p_data=''):
 
         """
-        Cache the information provided in the TDF file, identify compartments, and determine predictable nodes.
+        Cache the information provided in the TDF file, identify labels, and determine predictable nodes.
 
         :param p_data: Optional, string of the path of the TDF file.
         :return:
@@ -1259,14 +1259,14 @@ class Data:
     def gen_match_table(self, nidx_target=None):
 
         """
-        Construct the link-to-compartment lookup table for the link-matching classifier. The localization data
+        Construct the link-to-label lookup table for the link-matching classifier. The localization data
         are annotated to the nodes. There are links that are consistently catalyzed in nodes of particular
-        compartments. These links are types of links that are collected into this table, along with the
-        compartments that they are consistently found in. Currently, this includes the links that are in only one
+        labels. These links are types of links that are collected into this table, along with the
+        labels that they are consistently found in. Currently, this includes the links that are in only one
         node. For this reason, all of the links that are only in one node are in this table.
 
         :param nidx_target: Optional, list of node indices to construct the table with
-        :return: Dictionary of link indices to compartment names
+        :return: Dictionary of link indices to label names
         """
 
         _header_ = self._header_ + 'gen_match_table(): '
@@ -1398,7 +1398,7 @@ class Data:
 
         """
         A breakdown of the composition of the part of the data that have localization labels. This analyzes:
-        1. Proportion of data for each compartment
+        1. Proportion of data for each label
         2. How many links appear in N-number of nodes
 
         :param nidx: Optional, LIST of node indices to perform compositional analysis for
@@ -1437,14 +1437,14 @@ class Data:
     def gen_labels(self, nidxs=None, condense_labels=False):
 
         """
-        Generate compartment labels for each node listed in nidx. The label for each node is a binary array with
-        the same shape as the .labels list. Each position corresponds to the compartment of the same position in the
-        .labels list. This is one-hot encoding of the compartment labels, so 1 is assigned to the position if the
-        target node is found in that compartment, otherwise, assign 0.
+        Generate label labels for each node listed in nidx. The label for each node is a binary array with
+        the same shape as the .labels list. Each position corresponds to the label of the same position in the
+        .labels list. This is one-hot encoding of the label labels, so 1 is assigned to the position if the
+        target node is found in that label, otherwise, assign 0.
 
         :param nidxs: LIST of node indices
-        :param condense_labels: Boolean on whether to just use one representative compartment
-        :return: A numpy array of one-hot encoded compartments
+        :param condense_labels: Boolean on whether to just use one representative label
+        :return: A numpy array of one-hot encoded labels
         """
 
         if nidxs is None:
@@ -1467,10 +1467,10 @@ class Data:
     def encode_labels(self, lilabs):
 
         """
-        One-hot encoding of the compartment names.
+        One-hot encoding of the label names.
 
-        :param lilabs: List of compartment names generated in .gen_labels()
-        :return: A numpy array of one-hot encoded compartments
+        :param lilabs: List of label names generated in .gen_labels()
+        :return: A numpy array of one-hot encoded labels
         """
 
         y = []
