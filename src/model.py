@@ -478,13 +478,13 @@ class Model:
 
                 # Write predictions
                 for r, yopt in zip(predictions['nidx'], predictions['yopt']):
-                    str_opt = '/'.join(labels[np.array(np.round(yopt), dtype=bool)])
+                    str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
                     _ = f.write('%s\t\t%s\t%s\n' % (data.nodes[r][0], str_opt, str_opt))
 
                 # Write known labels
                 if evaluations:
                     for r, yopt, ytruth in zip(evaluations['nidx'], evaluations['yopt'], evaluations['ytruth']):
-                        str_opt = '/'.join(labels[np.array(np.round(yopt), dtype=bool)])
+                        str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
                         str_truth = '/'.join(labels[np.array(ytruth, dtype=bool)])
                         _ = f.write('%s\t%s\t%s\t%s\n' % (data.nodes[r][0], str_truth, str_opt, str_truth))
 
@@ -536,11 +536,11 @@ class Model:
                 coverage0 = self._calc_coverage(predictions['yopt'])
                 filling_coverage = 0.
                 if coverage0 < 1.:
-                    i_missing = np.invert(np.any(np.round(predictions['yopt']), axis=1))
+                    i_missing = np.invert(np.any(self._round(predictions['yopt']), axis=1))
                     inf_fill = predictions['yinf'][i_missing]
                     match_fill  = predictions['ymatch'][i_missing]
                     net_fill = predictions['ynet'][i_missing]
-                    y_fill = (np.round(inf_fill) > 0) | (np.round(match_fill) > 0) | (np.round(net_fill) > 0)
+                    y_fill = (self._round(inf_fill) > 0) | (self._round(match_fill) > 0) | (self._round(net_fill) > 0)
                     filling_coverage = self._calc_coverage(y_fill) * len(y_fill) / len(i_missing)
                     predictions['yopt'][i_missing] = y_fill
 
@@ -791,8 +791,7 @@ class Model:
 
         return np.transpose(y)[1]
 
-    @staticmethod
-    def _calc_coverage(y):
+    def _calc_coverage(self, y):
 
         """
         Calculate the coverage - the proportion of data that has labels predicted.
@@ -801,7 +800,7 @@ class Model:
         :return: A float point variable of the calculated coverage
         """
 
-        coverage = sum(np.any(np.round(y), axis=1)) / len(y)
+        coverage = sum(np.any(self._round(y), axis=1)) / len(y)
 
         return coverage
 
@@ -893,7 +892,7 @@ class Model:
             ypred = self._predict_proba(self.clf_opt, X=X)
             r = minimize(self._opt_round_cutoff, np.array([0.5]), (y, ypred), method='cobyla', jac='3-point')
             self.round_cutoff_history.append(r.x[0])
-            self.round_cutoff = np.mean(self.round_cutoff_history)
+            self.round_cutoff = np.median(self.round_cutoff_history)
             print('Optimal [%s] round_cutoff=%.4f' % (self.aim, self.round_cutoff))
 
         return
