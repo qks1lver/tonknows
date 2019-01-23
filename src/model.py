@@ -906,7 +906,7 @@ class Model:
         rbkg = self._scores(y, ybkg)
         c = self._calc_coverage(ypred)
 
-        return -(r[self.aim] - rbkg[self.aim]) * c * np.ceil(x)
+        return -(r[self.aim] - rbkg[self.aim]) * (r['f1'] - rbkg['f1']) * c * np.ceil(x)
 
     @staticmethod
     def _check_train_labels(X, y):
