@@ -468,7 +468,7 @@ class Model:
 
             labels = np.array(data.labels)
             with open(p_out, 'w+') as f:
-                _ = f.write('%s\tknown_labels\tpredictions\tmerged\n' % self.columns['nodes'])
+                _ = f.write('%s\tknown_labels\tpredictions\tmerged\n' % data.columns['nodes'])
 
                 # Write predictions
                 for r, yopt in zip(predictions['nidx'], predictions['yopt']):
