@@ -35,7 +35,7 @@ import pdb
 # Classes
 class Model:
 
-    def __init__(self, data=None, exclude_links=None, labels=None, verbose=False, columns=None):
+    def __init__(self, data=None, exclude_links=None, labels=None, verbose=False, columns=None, aim=None):
 
         """
         The Model class contains all the functions necessary to train/evaluate/predict from data. To do anything, a
@@ -45,6 +45,8 @@ class Model:
         :param exclude_links: Optional, list of string(s) of link names to exclude to building network connections
         :param labels: Optional, list of string(s) of label names to exclude from training
         :param verbose: Optional, Boolean for whether to verbose
+        :param columns: Optional, dictionary that defines the columns in the data, keys: 'nodes', 'links', 'labels', 'layers'
+        :param aim: Optional, None, 'recall', or 'precision'. For autotuning the round_cutoff for your specific aim
         """
 
         # Model ID, assigned after training
@@ -73,6 +75,9 @@ class Model:
         self.n_repeat = 1
         self.auc_roc_avg = 'weighted'
         self.maxinflidxratio = 0.01
+        self.round_cutoff = None
+        self.round_cutoff_history = []
+        self.aim = aim
 
         # Initialize classifiers
         self.clf_net = RandomForestClassifier(
@@ -884,7 +889,23 @@ class Model:
         self.clf_opt.fit(X, y)
         self.clf_opt_trained = True
 
+        if self.aim is not None:
+            ypred = self._predict_proba(self.clf_opt, X=X)
+            r = minimize(self._opt_round_cutoff, np.array([0.5]), (y, ypred), method='cobyla', jac='3-point')
+            self.round_cutoff_history.append(r.x[0])
+            self.round_cutoff = np.mean(self.round_cutoff_history)
+            print('Optimal [%s] round_cutoff=%.4f' % (self.aim, self.round_cutoff))
+
         return
+
+    def _opt_round_cutoff(self, x, y, ypred):
+
+        self.round_cutoff = x
+
+        r = self._scores(y, ypred)
+        c = self._calc_coverage(ypred)
+
+        return -r[self.aim] * c * r['f1']
 
     @staticmethod
     def _check_train_labels(X, y):
@@ -931,29 +952,29 @@ class Model:
                     y = np.transpose(y_t[col_keep])
                     y_pred = np.transpose(np.transpose(y_pred)[col_keep])
 
-                f1 = f1_score(y, np.round(y_pred), average=self.auc_roc_avg)
-                s = f1_score(y, np.round(y_pred), average=None)
+                f1 = f1_score(y, self._round(y_pred), average=self.auc_roc_avg)
+                s = f1_score(y, self._round(y_pred), average=None)
                 f1_labs[col_keep] = s if sum(col_keep) > 1 else s[1]
                 aucroc = roc_auc_score(y, y_pred, average=self.auc_roc_avg)
                 aucroc_labs[col_keep] = roc_auc_score(y, y_pred, average=None)
-                precision = precision_score(y, np.round(y_pred), average=self.auc_roc_avg)
-                recall = recall_score(y, np.round(y_pred), average=self.auc_roc_avg)
+                precision = precision_score(y, self._round(y_pred), average=self.auc_roc_avg)
+                recall = recall_score(y, self._round(y_pred), average=self.auc_roc_avg)
                 if sum(col_keep) > 1:
-                    precision_labs[col_keep] = precision_score(y, np.round(y_pred), average=None)
-                    recall_labs[col_keep] = recall_score(y, np.round(y_pred), average=None)
+                    precision_labs[col_keep] = precision_score(y, self._round(y_pred), average=None)
+                    recall_labs[col_keep] = recall_score(y, self._round(y_pred), average=None)
                 else:
-                    precision_labs[col_keep] = precision_score(y, np.round(y_pred))
-                    recall_labs[col_keep] = recall_score(y, np.round(y_pred))
+                    precision_labs[col_keep] = precision_score(y, self._round(y_pred))
+                    recall_labs[col_keep] = recall_score(y, self._round(y_pred))
             elif self.verbose:
                 print('*Cannot compute other metrics because no label in Truth has alternatives, only precision*')
-                precision = precision_score(y, np.round(y_pred), average=self.auc_roc_avg)
-                precision_labs = precision_score(y, np.round(y_pred), average=None)
+                precision = precision_score(y, self._round(y_pred), average=self.auc_roc_avg)
+                precision_labs = precision_score(y, self._round(y_pred), average=None)
 
         elif len(y) == 1:
             if self.verbose:
                 print('*Cannot compute other metrics with %d samples, only precision*' % len(y))
-                precision = precision_score(y, np.round(y_pred), average=self.auc_roc_avg)
-                precision_labs = precision_score(y, np.round(y_pred), average=None)
+                precision = precision_score(y, self._round(y_pred), average=self.auc_roc_avg)
+                precision_labs = precision_score(y, self._round(y_pred), average=None)
 
         result = {
             'aucroc': aucroc,
@@ -968,6 +989,13 @@ class Model:
         }
 
         return result
+
+    def _round(self, y):
+
+        if self.round_cutoff is None:
+            return np.round(y)
+        else:
+            return (y > self.round_cutoff) * 1.
 
 class Data:
 
@@ -1387,9 +1415,7 @@ class Data:
 
     def eval_link(self, lidx0, y):
 
-        x = []
-        for n in self.nidx_train:
-            x.append(1 if lidx0 in self.nidx2lidx[n] else 0)
+        x = [1 if lidx0 in self.nidx2lidx[n] else 0 for n in self.nidx_train]
 
         if np.any(x):
             pvals = np.array([spearmanr(x, yi)[1] if np.any(yi) else 1. for yi in np.transpose(y)])

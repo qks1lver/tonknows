@@ -52,10 +52,10 @@ class Dummy:
     def populate_node2links(self):
 
         self.node2links = {}
-        for k in self.nodes:
+        for n in self.nodes:
             lab = np.random.choice(self.labels)
-            self.node2links[k] = self._choose_links(self.label2links[lab])
-            self.node2labels[k] = [lab]
+            self.node2links[n] = self._choose_links(self.label2links[lab])
+            self.node2labels[n] = {lab}
 
         return self
 
@@ -90,12 +90,34 @@ class Dummy:
 
         return set(np.random.choice(self.labels, np.random.randint(1,self.n_labels) if randn else 1, replace=False))
 
-    def _choose_links(self, links=None):
+    def _choose_links(self, links=None, n=None):
 
         if not links:
             links = self.links
 
-        return set(np.random.choice(links, np.random.randint(self.linkrange[0], self.linkrange[1]), replace=False))
+        if n is None:
+            n = np.random.randint(self.linkrange[0], self.linkrange[1])
+
+        return set(np.random.choice(links, n, replace=False))
+
+    def _choose_nodes(self, nodes=None, n=1):
+
+        if not nodes:
+            nodes = self.nodes
+
+        return set(np.random.choice(nodes, n, replace=False))
+
+    def multilabel_nodes(self, ratio=0.2):
+
+        links = self._choose_links(n=int(np.ceil(self.n_links * ratio)))
+
+        for l in links:
+            self.link2labels[l] |= self._choose_labels(randn=True)
+            if l in self.link2nodes:
+                for n in self.link2nodes[l]:
+                    self.node2labels[n] |= self.link2labels[l]
+
+        return self
 
     def write(self, p_data=''):
 

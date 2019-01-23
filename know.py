@@ -16,6 +16,7 @@ import os
 import argparse
 from src.model import Model
 from src.iofunc import *
+from src.test import Dummy
 import pdb
 
 
@@ -40,6 +41,11 @@ _d_tmp_ = _d_tonknows_ + 'tmp/'
 if not os.path.isdir(_d_tmp_):
     os.makedirs(_d_tmp_)
 
+# test directory
+_d_test_ = _d_tonknows_ + 'test/'
+if not os.path.isdir(_d_test_):
+    os.makedirs(_d_test_)
+
 
 # Main \________________________________________________________________________________________________________________
 if __name__ == '__main__':
@@ -61,6 +67,7 @@ if __name__ == '__main__':
     parser.add_argument('--nrep', dest='n_repeat', default=3, type=int, help='N times to repeat train/eval')
     parser.add_argument('--maxlinkratio', dest='maxlinkratio', default=0.25, type=float, help='Maximum link ratio to use as link')
     parser.add_argument('--minlinkfreq', dest='minlinkfreq', default=1, type=int, help='Minimum link frequency to use as link')
+    parser.add_argument('--aim', dest='aim', default=None, help='To specifiy aim of the model')
     parser.add_argument('--save', dest='save', action='store_true', help='Save data')
     parser.add_argument('--open', dest='open', default='', help='Open saved pickle data')
     parser.add_argument('--shell', dest='shell', action='store_true', help='Python shell interactive session')
@@ -68,7 +75,7 @@ if __name__ == '__main__':
     parser.add_argument('--data', dest='data', default='', help='Folder or path of data to analyze')
     parser.add_argument('--setcurrent', dest='setcurrent', action='store_true', help='Set model to current after training')
     parser.add_argument('--usef1', dest='use_f1', action='store_true', help='Use F1-score when plotting')
-    parser.add_argument('--test', dest='test', default=None, help='For testing anything')
+    parser.add_argument('--test', dest='test', action='store_true', help='For testing anything')
 
     args = parser.parse_args()
 
@@ -102,7 +109,8 @@ if __name__ == '__main__':
                   exclude_links=param['exclude_links'] if args.param and 'exclude_links' in param else None,
                   labels=param['labels'] if args.param and 'labels' in param else labels,
                   verbose=args.to_verbose,
-                  columns=param['columns'] if args.param and 'columns' in param else None)
+                  columns=param['columns'] if args.param and 'columns' in param else None,
+                  aim=args.aim)
         m.maxlidxratio = args.maxlinkratio
         m.minlinkfreq = args.minlinkfreq
         m.masklayer = param['masklayer'] if args.param and 'masklayer' in param else []
@@ -246,4 +254,6 @@ if __name__ == '__main__':
 
     # For testing new code \____________________________________________________________________________________________
     if args.test:
-        print('\nNothing for now.\n')
+        d = Dummy().init_networks()
+        d.write(_d_test_ + 'pure_network.tsv')
+        d.multilabel_nodes(ratio=0.2).write(_d_test_ + 'mix_network.tsv')
