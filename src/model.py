@@ -15,6 +15,7 @@ def warn(*args, **kwargs):
     pass
 import warnings
 warnings.warn = warn
+warnings.filterwarnings("ignore",category =RuntimeWarning)
 
 # Imports
 import os
@@ -891,9 +892,9 @@ class Model:
         if self.aim is not None:
             ypred = self._predict_proba(self.clf_opt, X=X)
             ybkg = self.bkg_predict(n_samples=len(X))
-            r = minimize(self._opt_round_cutoff, np.array([0.5]), (y, ypred, ybkg), method='cobyla', jac='3-point')
+            r = minimize(self._opt_round_cutoff, np.array([self.round_cutoff if self.round_cutoff is not None else 0.5]), (y, ypred, ybkg), method='cobyla', jac='3-point')
             self.round_cutoff_history.append(r.x[0])
-            self.round_cutoff = np.median(self.round_cutoff_history)
+            self.round_cutoff = np.mean(self.round_cutoff_history)
             print('Optimal [%s] round_cutoff=%.4f' % (self.aim, self.round_cutoff))
 
         return
@@ -906,7 +907,11 @@ class Model:
         rbkg = self._scores(y, ybkg)
         c = self._calc_coverage(ypred)
 
-        return -(r[self.aim] - rbkg[self.aim]) * (r['f1'] - rbkg['f1']) * c * np.ceil(x)
+        if 'hard' not in self.aim:
+            return -(r[self.aim] - rbkg[self.aim]) * (r['f1'] - rbkg['f1']) * c * np.ceil(x)
+        else:
+            aim = self.aim.replace('hard', '')
+            return -(r[aim] - rbkg[aim]) * c * np.ceil(x)
 
     @staticmethod
     def _check_train_labels(X, y):
@@ -1420,6 +1425,7 @@ class Data:
 
         if np.any(x):
             pvals = np.array([spearmanr(x, yi)[1] if np.any(yi) else 1. for yi in np.transpose(y)])
+            pvals[np.isnan(pvals)] = 1.
         else:
             return False
 
