@@ -30,6 +30,7 @@ from sklearn.dummy import DummyClassifier
 from sklearn.preprocessing import minmax_scale
 from datetime import datetime
 from time import time
+from src.iofunc import open_pkl
 import pdb
 
 
@@ -102,11 +103,21 @@ class Model:
         # To store Data objects
         self.datas = []
 
-    def add_data(self, data, build=True):
+    def add_data(self, data, build=True, mimic=None):
 
         if data:
-            self.p_datas.append(data)
-            self.datas.append(self._load_data(data, build=build))
+            print('\n__  Adding data \_______________________________\n')
+
+            p_data = data if isinstance(data, list) else [data]
+
+            for p in p_data:
+                self.p_datas.append(p)
+                if mimic is None:
+                    self.datas.append(self._load_data(p, build=build))
+                else:
+                    d = self._load_data(p, build=False).mimic(data=mimic)
+                    self.datas.append(d.build_data())
+                print('    + ' + p)
 
         return self
 
@@ -197,6 +208,14 @@ class Model:
                 model_pkg['datas_%d_%s' % (i, k)] = v
 
         return model_pkg
+
+    def load_model(self, p_mod):
+
+        print('\n__  Loading model \_______________________________\n  \ File: %s \n' % p_mod)
+        m_pkg, _ = open_pkl(p_mod)
+        self.import_model(m_pkg)
+
+        return self
 
     def train_cv_layers(self):
 
@@ -354,7 +373,7 @@ class Model:
         # Evaluate final clf-opt with all data
         print('\n> Evaluating final classifier ...')
         self.clfs_predict(nidx_target=self.datas[self.train_idx].nidx_train, data=self.datas[self.train_idx], to_eval=True)
-        print('** Because this is evaluating with the training data, clf-net auc-roc and precision should be very high, but clf-opt should still be close.')
+        print('** Because this is evaluating with the training data, classifier performances should be very high.')
 
         # Assign model ID - this is here so that if retrained, it would be known that it is not the same model anymore
         self.id = 'lm_%s-%s' % (datetime.now().strftime('%Y%m%d%H%M%S'), ''.join(np.random.choice(list('abcdef123456'), 6)))
@@ -425,7 +444,20 @@ class Model:
 
         return predictions
 
-    def predict(self, data=None, p_out=''):
+    def predict_from_param(self, param, write=True):
+
+        results = []
+        for p in param['p_datas']:
+            p = param['datamod'](p) if 'datamod' in param else p
+            self.load_model(p_mod=param['model'])
+            self.add_data(data=p, mimic=self.datas[self.train_idx])
+            res = self.predict(data=self.datas[-1], write=write)
+            res['model'] = param['model']
+            results.append(res)
+
+        return results
+
+    def predict(self, data=None, write=True, p_out=''):
 
         """
         The is predicting with a prediction data or the specified Data object. If there are nodes with label
@@ -436,6 +468,7 @@ class Model:
         :param data: Optional, a Data class object that contains samples to be predicted for. If None, first non-train
         data is used
         :param p_out: Optional, String that specifies the file path of the report to be generated
+        :param write: Optional, whether to write predictions to file
         :return: Two variables: a dictionary containing predictions from all the base classifiers and the final model,
         and the String of the report file path
         """
@@ -446,7 +479,7 @@ class Model:
                     data = self.datas[i]
                     break
 
-        predictions = None
+        result = {'p_data': data.p_data, 'p_out':'', 'pred':None, 'eval':None}
         if data.p_data and os.path.isfile(data.p_data):
             print('\n_/ PREDICTION \_______________________________')
             print(' \ Data: %s' % data.p_data)
@@ -459,6 +492,7 @@ class Model:
             if data.nidx_train:
                 print('\n---{ Estimating performance with labeled data }---')
                 evaluations = self.eval(data=data)
+                result['eval'] = evaluations
 
             n_total = len(data.nidx_pred)
             print('\n---{ Predicting for %d nodes }---\n' % n_total)
@@ -466,35 +500,51 @@ class Model:
             # Transfer feature list from training data
             data.link2featidx = self.datas[self.train_idx].link2featidx
 
+            # Check if data is multilayer
+            if data.layer2nidx:
+                self.train_multilayers = True
+            else:
+                self.train_multilayers = False
+
+            # Predict
             predictions = self.clfs_predict(nidx_target=data.nidx_pred, data=data)
+            result['pred'] = predictions
 
             # Write results
-            timestamp = datetime.now()
-            if not p_out:
-                p_out = data.p_data.replace('.tsv', '_tonknows-%s-%s.tsv' % (timestamp.strftime('%Y%m%d%H%M%S'), ''.join(np.random.choice(list('abcdef123456'), 6))))
-
-            labels = np.array(data.labels)
-            with open(p_out, 'w+') as f:
-                _ = f.write('%s\tknown_labels\tpredictions\tmerged\n' % data.columns['nodes'])
-
-                # Write predictions
-                for r, yopt in zip(predictions['nidx'], predictions['yopt']):
-                    str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
-                    _ = f.write('%s\t\t%s\t%s\n' % (data.nodes[r][0], str_opt, str_opt))
-
-                # Write known labels
-                if evaluations:
-                    for r, yopt, ytruth in zip(evaluations['nidx'], evaluations['yopt'], evaluations['ytruth']):
-                        str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
-                        str_truth = '/'.join(labels[np.array(ytruth, dtype=bool)])
-                        _ = f.write('%s\t%s\t%s\t%s\n' % (data.nodes[r][0], str_truth, str_opt, str_truth))
-
-            print('Results written to %s\n' % p_out)
+            if write:
+                p_out = self.write_predictions(predictions=predictions, evaluations=evaluations, data=data, p_out=p_out)
+                result['p_out'] = p_out
 
         else:
             print('\n { No evaluation dataset }\n')
 
-        return predictions, p_out
+        return result
+
+    def write_predictions(self, predictions, evaluations=None, data=None, p_out=''):
+
+        timestamp = datetime.now()
+        if not p_out:
+            p_out = data.p_data.replace('.tsv', '_tonknows-%s-%s.tsv' % (timestamp.strftime('%Y%m%d%H%M%S'), ''.join(np.random.choice(list('abcdef123456'), 6))))
+
+        labels = np.array(data.labels)
+        with open(p_out, 'w+') as f:
+            _ = f.write('%s\tknown_labels\tpredictions\tmerged\n' % data.columns['nodes'])
+
+            # Write predictions
+            for r, yopt in zip(predictions['nidx'], predictions['yopt']):
+                str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
+                _ = f.write('%s\t\t%s\t%s\n' % (data.nodes[r][0], str_opt, str_opt))
+
+            # Write known labels
+            if evaluations:
+                for r, yopt, ytruth in zip(evaluations['nidx'], evaluations['yopt'], evaluations['ytruth']):
+                    str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
+                    str_truth = '/'.join(labels[np.array(ytruth, dtype=bool)])
+                    _ = f.write('%s\t%s\t%s\t%s\n' % (data.nodes[r][0], str_truth, str_opt, str_truth))
+
+        print('Results written to %s\n' % p_out)
+
+        return p_out
 
     def clfs_predict(self, nidx_target, data=None, to_eval=False, fill=True):
 
@@ -850,14 +900,14 @@ class Model:
 
     def _train_clf_inf(self, nidx_target):
 
-        r = minimize(self._clf_inf_train, np.array([0.05]), nidx_target, method='cobyla', jac='3-point')
+        r = minimize(self._opt_maxinflidxratio, np.array([0.05]), nidx_target, method='cobyla', jac='3-point')
         self.maxinflidxratio = r.x[0]
         if self.verbose:
             print('  maxinflidxratio = %.4f' % self.maxinflidxratio)
 
         return
 
-    def _clf_inf_train(self, x, nidx_target):
+    def _opt_maxinflidxratio(self, x, nidx_target):
 
         self.maxinflidxratio = x
 
@@ -1084,7 +1134,7 @@ class Data:
         if self.verbose:
             print(_header_ + 'Build complete.')
 
-        return
+        return self
 
     def mimic(self, data):
 
@@ -1099,7 +1149,7 @@ class Data:
         self.masklayer = data.masklayer
         self.spearman_cutoff = data.spearman_cutoff
 
-        return
+        return self
 
     def read_data(self, p_data=''):
 
@@ -1201,7 +1251,7 @@ class Data:
             print('  Found %d nodes' % len(self.node_links))
             print('  Found %d links' % len(self.links))
 
-        return
+        return self
 
     def map_data(self):
 
@@ -1252,7 +1302,7 @@ class Data:
                 if nidx in self.nidx_pred:
                     self.nidx_pred.remove(nidx)
 
-        return
+        return self
 
     def partition_data(self):
 
@@ -1293,7 +1343,7 @@ class Data:
             print('  %d nodes can be used to predict' % len(self.nidx_pred))
             print('  %d nodes cannot be mapped due to lack of mappable links' % len(self.nidx_exclude))
 
-        return
+        return self
 
     def gen_match_table(self, nidx_target=None):
 

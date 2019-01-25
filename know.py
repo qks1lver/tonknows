@@ -75,6 +75,7 @@ if __name__ == '__main__':
     parser.add_argument('--data', dest='data', default='', help='Folder or path of data to analyze')
     parser.add_argument('--setcurrent', dest='setcurrent', action='store_true', help='Set model to current after training')
     parser.add_argument('--usef1', dest='use_f1', action='store_true', help='Use F1-score when plotting')
+    parser.add_argument('--nowrite', dest='no_write', action='store_true', help="Don't write predictions to file")
     parser.add_argument('--test', dest='test', action='store_true', help='For testing anything')
 
     args = parser.parse_args()
@@ -165,7 +166,6 @@ if __name__ == '__main__':
 
             m_pkg = m.export_model()
             save_pkl(p_mod, [m_pkg, res])
-            print('   \ Saved: %s' % p_mod)
 
         # set vd and local variables
         vd = {'m': 'trained model (Model class)',
@@ -199,37 +199,50 @@ if __name__ == '__main__':
     # Predict ------------------------------------------------------------------------------------------------------
     if args.pred_data:
 
-        args.pred_data = param['datamod'](args.pred_data) if args.param and 'datamod' in param else os.path.realpath(args.pred_data)
-        args.model = os.path.realpath(args.model) if args.model else _p_current_model_
-
         if not args.model:
             print('\n { Missing model file, use --mod path/to/model.pkl }\n')
         else:
-            print('\n__  Loading model \_______________________________\n  \ File: %s \n' % args.model)
-            m_pkg, _ = open_pkl(args.model)
-            m = Model(verbose=args.to_verbose)
-            m.import_model(m_pkg)
-            m.add_data(data=args.pred_data, build=False)
-            m.datas[-1].mimic(data=m.datas[m.train_idx])
-            m.datas[-1].build_data()
+            if args.pred_data == 'param':
+                m = Model(verbose=args.to_verbose)
+                res = m.predict_from_param(param=param, write=not args.no_write)
 
-            print('\n__  Building data \_______________________________\n  \ File: %s \n' % args.pred_data)
-            m.train_multilayers = False
-            res, p_out = m.predict(data=m.datas[-1])
+                # set vd
+                vd = {'m': 'loaded model (Model class)',
+                      'res': 'prediction results (list of dictionaries)'}
 
-            # set vd
-            vd = {'m': 'loaded model (Model class)',
-                  'res': 'prediction results (dictionary)',
-                  'p_out': 'prediction results saved path'}
+                # path to save .pkl if saving
+                p_out_dir = os.path.dirname(res[0]['p_data']) if res else None
+
+            else:
+                args.pred_data = param['datamod'](args.pred_data) if args.param and 'datamod' in param else os.path.realpath(args.pred_data)
+                args.model = os.path.realpath(args.model) if args.model else _p_current_model_
+
+                m = Model(verbose=args.to_verbose).load_model(p_mod=args.model)
+                m.add_data(data=args.pred_data, mimic=m.datas[m.train_idx])
+                res = m.predict(data=m.datas[-1], write=not args.no_write)
+                res['model'] = args.model
+
+                # set vd
+                vd = {'m': 'loaded model (Model class)',
+                      'res': 'prediction results (dictionary)'}
+
+                # path to save .pkl if saving
+                p_out_dir = os.path.dirname(res['p_data']) if res['pred'] else None
+
+            if args.save and p_out_dir:
+                print('\n__  Saving results to pickle \_______________________________')
+                res_id = gen_id()
+                print('  \ Result ID: %s' % res_id)
+                p_out = '%s/tonknows_results-%s.pkl' % (p_out_dir, res_id)
+                save_pkl(p_file=p_out, content=res)
 
     # Open --------------------------------------------------------------------------------------------------------
     if args.open:
-        m_pkg, res = open_pkl(args.open)
-        m = Model()
-        m.import_model(m_pkg)
+        pkg = open_pkl(args.open)
         # set vd
-        vd = {'m':'loaded model (Model class)',
-              'res':'loaded training results (Pandas dataframe)'}
+        vd = {'pkg': 'Content in .pkl'}
+
+        args.shell = True
 
     # Analyze ------------------------------------------------------------------------------------------------------
     if args.analyze:
@@ -245,6 +258,10 @@ if __name__ == '__main__':
             data = analysis.compile_batch_train_results()
 
             vd = {'data': 'Compiled training data (Pandas dataframe)'}
+
+        if args.analyze == 'precision' and args.pred_data and args.pred_data is not 'param':
+            # Generate a series of predictions with incremental rounding cutoff (greater precision)
+            Analysis().step_precisions(d_out=args.model_out, model=m, data=m.datas[-1], predictions=res['pred'], evaluations=res['eval'])
 
 
     # Enable interaction \______________________________________________________________________________________________

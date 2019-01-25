@@ -24,7 +24,7 @@ class Analysis:
 
     def __init__(self, p_data=''):
 
-        self.p_data = p_data if p_data.endswith('/') else p_data + '/'
+        self.p_data = p_data if p_data and p_data.endswith('/') else p_data + '/'
         self.use_f1 = False
 
     def compile_batch_train_results(self):
@@ -272,3 +272,16 @@ class Analysis:
         plt.draw()
 
         return
+
+    @staticmethod
+    def step_precisions(d_out, model, data, predictions, evaluations=None):
+
+        if not os.path.isdir(d_out):
+            os.makedirs(d_out)
+            print('Created: %s' % ''.join(os.path.realpath(d_out)))
+
+        # Write predictions at incremental precision
+        for cutoff in np.linspace(0., 0.5, 11):
+            p_out = d_out + 'precision_%d.tsv' % (cutoff * 100)
+            model.round_cutoff = cutoff
+            model.write_predictions(predictions, evaluations, data=data, p_out=p_out)
