@@ -272,5 +272,9 @@ if __name__ == '__main__':
     # For testing new code \____________________________________________________________________________________________
     if args.test:
         d = Dummy().init_networks()
-        d.write(_d_test_ + 'pure_network.tsv')
-        d.multilabel_nodes(ratio=0.2).write(_d_test_ + 'mix_network.tsv')
+        p_pure = _d_test_ + 'pure_network.tsv'
+        p_mix = _d_test_ + 'mix_network.tsv'
+        d.write(p_pure)
+        print('  Generated pure network: %s' % p_pure)
+        d.multilabel_nodes(ratio=0.4).write(p_mix)
+        print('  Generated mixed network: %s' % p_mix)
