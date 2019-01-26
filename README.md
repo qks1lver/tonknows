@@ -26,17 +26,17 @@ using very simple base classifiers to ask understandable questions.
 
 ### Usage
 ##### TL;DR
-* To train and save model
+* To **train** and save model
 
     ```./know.py -v --td where/you/have/network.tsv --save```
 
-* To use trained model to evaluate another network
+* To **evaluate** the trained model with another network
 
     ```./know.py -v --mod models/model.pkl --ed where/you/have/network2.tsv```
 
-* To use trained model to predict/evaluate another network with unknown nodes
+* To use trained model to **predict** nodes of another network with unknown labels
 
-    ```.know.py -v --mod models/model.pkl --pd where/you/have/network3.tsv```
+    ```./know.py -v --mod models/model.pkl --pd where/you/have/network3.tsv```
 
 ##### Let's first familiarize ourselves with where things are.
 * Open a **terminal** and navigate to the ``cd where/you/put/tonknows/`` folder. You should see a ``know.py`` file. That file runs everything.
@@ -72,9 +72,18 @@ Please keep it there. Now try this:
     
 * Let's try something more interesting, and let's use the mixed network:
     
-    ```.know.py -v --td test/mix_network.tsv --save```
+    ```./know.py -v --td test/mix_network.tsv --save --setcurrent```
     
     This network would result in as high of a performance as the pure network, because about 40% of the labels are
     associated to random nodes. Thus it becomes very challenging to determine any real relationships.
     
-    This time the model is saved with the ``--save`` flag.
+    This time the model is saved with the ``--save`` flag. And this new model is set to the **current** one with the
+    ``--setcurrent`` flag.
+    
+* Let's evaluate the trained model using the pure network:
+    
+    ```./know.py -v --ed test/pure_network```
+    
+    Since there is a **-current** model, TonKnows just finds that and use it by default.
+    
+    The performance is not as high as if it was trained by a pure model, but still pretty okay.
