@@ -31,6 +31,8 @@ from sklearn.preprocessing import minmax_scale
 from datetime import datetime
 from time import time
 from src.iofunc import open_pkl
+from multiprocessing import Pool
+from itertools import repeat
 import pdb
 
 
@@ -1413,22 +1415,29 @@ class Data:
         if not self.link2featidx:
             self.build_link2featidx()
 
+        # build link index to feature indices dictionary
         lidx2fidx = self.build_lidx2featidx()
 
-        X = []
-        feat0 = np.zeros(len(self.link2featidx))
-        for nidx in nidx_target:
-            lidx2r = self.build_lidx2radius(nidxs={nidx}, perlayer=perlayer)
-            feat = feat0.copy()
-            for n, r in lidx2r.items():
-                if n in lidx2fidx:
-                    feat[lidx2fidx[n]] = r
-            X.append(feat)
+        # parallel feature generation
+        n_targets = len(nidx_target)
+        with Pool(os.cpu_count()) as p:
+            r = p.starmap(self._gen_feature, zip(nidx_target, repeat(lidx2fidx, n_targets), repeat(perlayer, n_targets)))
+        X = np.array(r)
 
-        X = np.array(X)
+        # identify predictables
         predictable = np.invert(np.all(X == 0, axis=1))
 
         return X, self.gen_labels(nidxs=nidx_target), predictable
+
+    def _gen_feature(self, nidx, lidx2fidx, perlayer):
+
+        lidx2r = self.build_lidx2radius(nidxs={nidx}, perlayer=perlayer)
+        feat = np.zeros(len(self.link2featidx))
+        for n, r in lidx2r.items():
+            if n in lidx2fidx:
+                feat[lidx2fidx[n]] = r
+
+        return feat
 
     def build_link2featidx(self):
 
@@ -1454,18 +1463,30 @@ class Data:
     def _build_link2featidx(self, spearman=True):
 
         y = self.gen_labels()
-        fidx = 0
-        self.link2featidx = {}
+        links = []
+
+        # identify all links
         for n in self.nidx_train:
             for l in self.nidx2lidx[n]:
-                if self.links[l] not in self.link2featidx:
-                    if spearman:
-                        if self.eval_link(lidx0=l, y=y):
-                            self.link2featidx[self.links[l]] = fidx
-                            fidx += 1
-                    else:
-                        self.link2featidx[self.links[l]] = fidx
-                        fidx += 1
+                if self.links[l] not in links:
+                    links.append(l)
+
+        # whether to do Spearman eval
+        if spearman:
+            # parallelize Spearman eval
+            with Pool(os.cpu_count()) as p:
+                r = p.starmap(self.eval_link, zip(links, repeat(y, len(links))))
+
+            # screen for valid features
+            self.link2featidx = {}
+            fidx = 0
+            for i, x in enumerate(r):
+                if x:
+                    self.link2featidx[links[i]] = fidx
+                    fidx += 1
+        else:
+            self.link2featidx = {l:i for i,l in enumerate(links)}
+            fidx = len(links)
 
         return fidx
 
