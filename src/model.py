@@ -1444,51 +1444,52 @@ class Data:
         if self.verbose:
             print('First time compiling features, can take up to a few minutes ...')
 
-        fidx = self._build_link2featidx()
+        n_feats = self._build_link2featidx()
 
         while not self.link2featidx and self.spearman_cutoff <= 0.4:
             print('  Could not compile features, try relaxing Spearman cutoff %.2f -> %.2f' % (self.spearman_cutoff, self.spearman_cutoff * 2))
             self.spearman_cutoff *= 2
-            fidx = self._build_link2featidx()
+            n_feats = self._build_link2featidx()
 
         if not self.link2featidx:
             print('  Compiling features without Spearman correlation')
-            fidx = self._build_link2featidx(spearman=False)
+            n_feats = self._build_link2featidx(spearman=False)
 
         if self.verbose:
-            print('  Compiled %d features' % fidx)
+            print('  Compiled %d features' % n_feats)
 
         return self
 
     def _build_link2featidx(self, spearman=True):
 
         y = self.gen_labels()
-        links = []
+        lidxs = []
 
         # identify all links
         for n in self.nidx_train:
             for l in self.nidx2lidx[n]:
-                if self.links[l] not in links:
-                    links.append(l)
+                if l not in lidxs:
+                    lidxs.append(l)
 
         # whether to do Spearman eval
         if spearman:
             # parallelize Spearman eval
             with Pool(os.cpu_count()) as p:
-                r = p.starmap(self.eval_link, zip(links, repeat(y, len(links))))
+                r = p.starmap(self.eval_link, zip(lidxs, repeat(y, len(lidxs))))
 
             # screen for valid features
-            self.link2featidx = {}
-            fidx = 0
+            self.link2featidx = dict()
+            idx = 0
             for i, x in enumerate(r):
                 if x:
-                    self.link2featidx[links[i]] = fidx
-                    fidx += 1
+                    self.link2featidx[self.links[lidxs[i]]] = idx
+                    idx += 1
         else:
-            self.link2featidx = {l:i for i,l in enumerate(links)}
-            fidx = len(links)
+            self.link2featidx = {l:i for i,l in enumerate(lidxs)}
 
-        return fidx
+        n_feats = len(self.link2featidx)
+
+        return n_feats
 
     def eval_link(self, lidx0, y):
 
