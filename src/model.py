@@ -610,35 +610,35 @@ class Model:
             print('| -----  -------  ------  ---------  ------  -------- |')
 
             # baseline
-            r = self._scores(y=predictions['ytruth'], y_pred=predictions['ybkg'])
+            r = self.scores(y=predictions['ytruth'], y_pred=predictions['ybkg'])
             coverage = self._calc_coverage(predictions['ybkg'])
             print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
                 'BKG', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
             # clf-inf
             idx = predictions['inf']
-            r = self._scores(y=predictions['ytruth'][idx], y_pred=predictions['yinf'][idx])
+            r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['yinf'][idx])
             coverage = self._calc_coverage(predictions['yinf'])
             print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
                 'INF', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
             # clf-match
             idx = predictions['match']
-            r = self._scores(y=predictions['ytruth'][idx], y_pred=predictions['ymatch'][idx])
+            r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['ymatch'][idx])
             coverage = self._calc_coverage(predictions['ymatch'])
             print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
                 'MATCH', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
             # clf-net
             idx = predictions['net']
-            r = self._scores(y=predictions['ytruth'][idx], y_pred=predictions['ynet'][idx])
+            r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['ynet'][idx])
             coverage = self._calc_coverage(predictions['ynet'])
             print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
                 'NET', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
             # clf-opt
             if 'yopt' in predictions:
-                r = self._scores(y=predictions['ytruth'], y_pred=predictions['yopt'])
+                r = self.scores(y=predictions['ytruth'], y_pred=predictions['yopt'])
                 coverage = self._calc_coverage(predictions['yopt'])
                 print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
                     '*OPT', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
@@ -916,7 +916,7 @@ class Model:
         y, _ = self.clf_inf_predict(nidx_target=nidx_target)
         y0 = self.datas[self.train_idx].gen_labels(nidxs=nidx_target)
 
-        r = self._scores(y0, y)
+        r = self.scores(y0, y)
         c = self._calc_coverage(y)
 
         score = -r['aucroc'] * r['f1'] * c
@@ -955,8 +955,8 @@ class Model:
 
         self.round_cutoff = x
 
-        r = self._scores(y, ypred)
-        rbkg = self._scores(y, ybkg)
+        r = self.scores(y, ypred)
+        rbkg = self.scores(y, ybkg)
         c = self._calc_coverage(ypred)
 
         if 'hard' not in self.aim:
@@ -977,7 +977,7 @@ class Model:
 
         return X, y
 
-    def _scores(self, y, y_pred):
+    def scores(self, y, y_pred):
 
         """
         Compute the performance metrics, which include AUC-ROC, precision, AUC-ROC of each label, precision of

@@ -274,7 +274,11 @@ if __name__ == '__main__':
         d = Dummy().init_networks()
         p_pure = _d_test_ + 'pure_network.tsv'
         p_mix = _d_test_ + 'mix_network.tsv'
+        p_unknown = _d_test_ + 'unknown_network.tsv'
         d.write(p_pure)
         print('  Generated pure network: %s' % p_pure)
         d.multilabel_nodes(ratio=0.4).write(p_mix)
         print('  Generated mixed network: %s' % p_mix)
+        d.write(p_unknown)
+        d.multilabel_nodes(ratio=0.4).write(p_unknown, labels=False, writemode='a')
+        print('  Generated unknown network: %s' % p_unknown)

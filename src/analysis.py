@@ -128,7 +128,7 @@ class Analysis:
 
             for i, (y0, y1) in enumerate(zip(results['ytruth'], results[x])):
 
-                r = model._scores(y0[idx[i]], y1[idx[i]])
+                r = model.scores(y0[idx[i]], y1[idx[i]])
                 predictable = sum(idx[i]) / len(idx[i]) * 100
                 predictables = np.sum(y0[idx[i]], axis=0) / len(y0) * 100
 
