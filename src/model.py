@@ -82,15 +82,16 @@ class Model:
         self.round_cutoff = None
         self.round_cutoff_history = []
         self.aim = aim
+        self.n_estimators = 200
+        self.n_est_history = [self.n_estimators]
+        self.min_impurity_decrease = 0.00001
+        self.min_imp_dec_history = [self.min_impurity_decrease]
+        self.min_sample_leaf = 2
+        self.min_leaf_history = [self.min_sample_leaf]
+        self.param_tune_scale = 0.3
 
         # Initialize classifiers
-        self.clf_net = RandomForestClassifier(
-            n_estimators=400,
-            max_features=None,
-            min_impurity_decrease=0.000001,
-            class_weight='balanced_subsample',
-            n_jobs=os.cpu_count()
-        )
+        self.clf_net = self.gen_rfc()
         self.unique_lidx2labels = None
         self.clf_opt = RandomForestClassifier(
             n_estimators=0,
@@ -104,6 +105,23 @@ class Model:
 
         # To store Data objects
         self.datas = []
+
+    def gen_rfc(self):
+
+        self.n_estimators = int(self.n_estimators) if self.n_estimators > 0 else 1
+        self.min_impurity_decrease = self.min_impurity_decrease if self.min_impurity_decrease > 0 else 0
+        self.min_sample_leaf = int(np.ceil(self.min_sample_leaf)) if self.min_sample_leaf > 0 else 1
+
+        clf = RandomForestClassifier(
+            n_estimators=self.n_estimators,
+            max_features=None,
+            min_impurity_decrease=self.min_impurity_decrease,
+            min_samples_leaf=self.min_sample_leaf,
+            class_weight='balanced_subsample',
+            n_jobs=os.cpu_count()
+        )
+
+        return clf
 
     def add_data(self, data, build=True, mimic=None):
 
@@ -325,12 +343,33 @@ class Model:
             if self.verbose:
                 rep_str = '\n_/--- Rep %d/%d' % (i_rep + 1, self.n_repeat)
 
+            # Sample clf-net parameters to test
+            param = [
+                np.random.normal(loc=self.n_estimators,
+                                 scale=self.n_estimators*self.param_tune_scale,
+                                 size=self.kfold_cv),
+                np.random.normal(loc=self.min_impurity_decrease,
+                                 scale=self.min_impurity_decrease*self.param_tune_scale,
+                                 size=self.kfold_cv),
+                np.random.normal(loc=self.min_sample_leaf,
+                                 scale=np.ceil(self.min_sample_leaf*self.param_tune_scale),
+                                 size=self.kfold_cv),
+            ]
+            scores = list()
+
             for j_fold, (opt_train_idx, opt_test_idx) in enumerate(kf_opt.split(X=self.datas[self.train_idx].nidx_train, y=self.datas[self.train_idx].gen_labels(condense_labels=True))):
 
                 if self.verbose:
                     print(rep_str + ' - CV %d/%d ---\_____\n' % (j_fold + 1, self.kfold_cv))
 
+                # reset training status
                 self.clf_opt_trained = False
+
+                # set clf-net parameters
+                self.n_estimators = param[0][j_fold]
+                self.min_impurity_decrease = param[1][j_fold]
+                self.min_sample_leaf = param[2][j_fold]
+                self.clf_net = self.gen_rfc()
 
                 # Split data
                 opt_train_nidx = np.array([self.datas[self.train_idx].nidx_train[i] for i in opt_train_idx])
@@ -362,6 +401,17 @@ class Model:
                 opt_res = self.clfs_predict(nidx_target=opt_test_nidx, data=self.datas[self.train_idx], to_eval=True)
                 opt_results = opt_results.append(opt_res, ignore_index=True)
 
+                # Append score to optimize clf-net parameter
+                r = self._scores(opt_res['ytruth'], opt_res['yopt'])
+                if not self.aim:
+                    scores.append(r['aucroc'])
+                else:
+                    aim = self.aim.replace('hard', '')
+                    scores.append(r[aim])
+
+            # Aggregate results from clf-net parameter search
+            self._set_clf_net_param(param, scores)
+
         # STEP 2 - Train final model -----------------------------------------------------------------------------------
         # .clf_opt is already trained through previous iterations by using warm_start
 
@@ -387,6 +437,27 @@ class Model:
             print('  \ Training complete! /\n')
 
         return opt_results
+
+    def _set_clf_net_param(self, param, scores):
+
+        imax = np.argmax(scores)
+        self.n_est_history.append(param[0][imax])
+        self.min_imp_dec_history.append(param[1][imax])
+        self.min_leaf_history.append(param[2][imax])
+
+        self.n_estimators = np.mean(self.n_est_history)
+        self.min_impurity_decrease = np.mean(self.min_imp_dec_history)
+        self.min_sample_leaf = np.mean(self.min_leaf_history)
+
+        self.clf_net = self.gen_rfc()
+
+        if self.verbose:
+            print('\n__ clf-net param auto-tune \_______')
+            print(' clf-net.n_estimators = %d' % self.n_estimators)
+            print(' clf-net.min_impurity_decrease = %.7f' % self.min_impurity_decrease)
+            print(' clf-net.min_sample_leaf = %d' % self.min_sample_leaf)
+
+        return
 
     def check_training_samples(self):
 
@@ -1422,6 +1493,7 @@ class Data:
         n_targets = len(nidx_target)
         with Pool(os.cpu_count()) as p:
             r = p.starmap(self._gen_feature, zip(nidx_target, repeat(lidx2fidx, n_targets), repeat(perlayer, n_targets)))
+        p.close()
         X = np.array(r)
 
         # identify predictables
@@ -1436,6 +1508,8 @@ class Data:
         for n, r in lidx2r.items():
             if n in lidx2fidx:
                 feat[lidx2fidx[n]] = r
+
+        del lidx2r
 
         return feat
 
@@ -1476,6 +1550,7 @@ class Data:
             # parallelize Spearman eval
             with Pool(os.cpu_count()) as p:
                 r = p.starmap(self.eval_link, zip(lidxs, repeat(y, len(lidxs))))
+            p.close()
 
             # screen for valid features
             self.link2featidx = dict()
@@ -1500,6 +1575,8 @@ class Data:
             pvals[np.isnan(pvals)] = 1.
         else:
             return False
+
+        del x
 
         return np.any(pvals < self.spearman_cutoff)
 
