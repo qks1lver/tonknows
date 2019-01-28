@@ -119,16 +119,26 @@ class Dummy:
 
         return self
 
-    def write(self, p_data=''):
+    def write(self, p_data='', labels=True, writemode='w+'):
 
         if not p_data:
             p_data = 'dummy_network-%s.tsv' % ''.join(np.random.choice(list('abcdefgh12345678'), 6))
 
-        with open(p_data, 'w+') as f:
-            _ = f.write('nodes\tlinks\tlabels\n')
-            for n in self.nodes:
-                lab = self.node2labels[n]
-                links = self.node2links[n]
-                _ = f.write('%s\t%s\t%s\n' % (n, '/'.join(links), '/'.join(lab)))
+        with open(p_data, writemode) as f:
+
+            if labels:
+                if 'a' not in writemode:
+                    _ = f.write('nodes\tlinks\tlabels\n')
+                for n in self.nodes:
+                    lab = self.node2labels[n]
+                    links = self.node2links[n]
+                    _ = f.write('%s\t%s\t%s\n' % (n, '/'.join(links), '/'.join(lab)))
+
+            else:
+                if 'a' not in writemode:
+                    _ = f.write('nodes\tlinks\n')
+                for n in self.nodes:
+                    links = self.node2links[n]
+                    _ = f.write('%s\t%s\n' % (n, '/'.join(links)))
 
         return p_data
