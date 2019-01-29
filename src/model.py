@@ -1490,24 +1490,25 @@ class Data:
             self.build_link2featidx()
 
         # build link index to feature indices dictionary
-        if self.verbose:
-            print(_header_ + 'building lidx2featidx')
         self.lidx2fidx = self.build_lidx2featidx()
 
-        # parallel feature generation
-        if self.verbose:
-            print(_header_ + 'parallel feat gen')
+        # feature generation
+        tmp = []
+        for nidx in nidx_target:
+            tmp.append(self._gen_feature(nidx=nidx))
+        X = np.array(tmp)
+        del tmp
+        '''
+        # No good way to make sure memory does not explode, curbing this capability for now
         with Pool(os.cpu_count(), maxtasksperchild=1) as p:
             r = p.map(self._gen_feature, nidx_target, chunksize=int(np.ceil(len(nidx_target)/os.cpu_count())))
             p.close()
-            p.terminate()
             p.join()
         del p
         X = np.array(r)
+        '''
 
         # identify predictables
-        if self.verbose:
-            print(_header_ + 'find predictables')
         predictable = np.invert(np.all(X == 0, axis=1))
 
         return X, self.gen_labels(nidxs=nidx_target), predictable
@@ -1562,7 +1563,6 @@ class Data:
             with Pool(os.cpu_count(), maxtasksperchild=1) as p:
                 r = p.starmap(self.eval_link, zip(lidxs, repeat(y, len(lidxs))), chunksize=int(np.ceil(len(lidxs)/os.cpu_count())))
                 p.close()
-                p.terminate()
                 p.join()
             del p
 
