@@ -33,7 +33,6 @@ from time import time
 from src.iofunc import open_pkl
 from multiprocessing import Pool
 from itertools import repeat
-from contextlib import closing
 import pdb
 
 
@@ -1498,8 +1497,11 @@ class Data:
         # parallel feature generation
         if self.verbose:
             print(_header_ + 'parallel feat gen')
-        with closing(Pool(os.cpu_count(), maxtasksperchild=1)) as p:
+        with Pool(os.cpu_count(), maxtasksperchild=1) as p:
             r = p.map(self._gen_feature, nidx_target, chunksize=int(np.ceil(len(nidx_target)/os.cpu_count())))
+            p.close()
+            p.terminate()
+            p.join()
         del p
         X = np.array(r)
 
@@ -1557,8 +1559,11 @@ class Data:
         # whether to do Spearman eval
         if spearman:
             # parallelize Spearman eval
-            with closing(Pool(os.cpu_count(), maxtasksperchild=1)) as p:
+            with Pool(os.cpu_count(), maxtasksperchild=1) as p:
                 r = p.starmap(self.eval_link, zip(lidxs, repeat(y, len(lidxs))), chunksize=int(np.ceil(len(lidxs)/os.cpu_count())))
+                p.close()
+                p.terminate()
+                p.join()
             del p
 
             # screen for valid features
