@@ -402,7 +402,7 @@ class Model:
                 opt_results = opt_results.append(opt_res, ignore_index=True)
 
                 # Append score to optimize clf-net parameter
-                r = self._scores(opt_res['ytruth'], opt_res['yopt'])
+                r = self.scores(opt_res['ytruth'], opt_res['yopt'])
                 if not self.aim:
                     scores.append(r['aucroc'])
                 else:
