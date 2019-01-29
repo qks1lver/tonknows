@@ -1161,16 +1161,17 @@ class Data:
             for k, v in columns.items():
                 self.columns[k] = v
 
-        self.nodes = []
-        self.node_links = []
-        self.node_labels = []
-        self.links = []
-        self.nidx2lidx = {}
-        self.lidx2nidx = {}
-        self.link2featidx = {}
-        self.lidx2ratio = {}
-        self.link2freq = {}
-        self.link2lidx = {}
+        self.nodes = list()
+        self.node_links = list()
+        self.node_labels = list()
+        self.links = list()
+        self.nidx2lidx = dict()
+        self.lidx2nidx = dict()
+        self.link2featidx = dict()
+        self.lidx2ratio = dict()
+        self.link2freq = dict()
+        self.link2lidx = dict()
+        self.lidx2fidx = dict()
 
         self.k_neighbors = k_neighbors
         self.min_network_size = min_network_size
@@ -1178,13 +1179,14 @@ class Data:
         self.minlinkfreq = 1
         self.spearman_cutoff = 0.1
 
-        self.nidx_train = []
-        self.nidx_pred = []
-        self.nidx_exclude = []
-        self.layer2nidx = {}
-        self.nidx2layer = []
+        self.nidx_train = list()
+        self.nidx_pred = list()
+        self.nidx_exclude = list()
+        self.layer2nidx = dict()
+        self.nidx2layer = list()
 
         self.masklayer = masklayer if masklayer else []
+        self.perlayer = False
 
     def build_data(self):
 
@@ -1474,9 +1476,10 @@ class Data:
         if self.verbose:
             print(_header_ + 'Generating features ...')
 
-        if perlayer:
+        self.perlayer = perlayer
+        if self.perlayer:
             if not self.layer2nidx:
-                perlayer = False
+                self.perlayer = False
                 if self.verbose:
                     print('  Cannot generate features per layer: No layers field in data')
 
@@ -1489,15 +1492,13 @@ class Data:
         # build link index to feature indices dictionary
         if self.verbose:
             print(_header_ + 'building lidx2featidx')
-        lidx2fidx = self.build_lidx2featidx()
+        self.lidx2fidx = self.build_lidx2featidx()
 
         # parallel feature generation
         if self.verbose:
             print(_header_ + 'parallel feat gen')
-        n_targets = len(nidx_target)
-        with Pool(os.cpu_count()) as p:
-            r = p.starmap(self._gen_feature, zip(nidx_target, repeat(lidx2fidx, n_targets), repeat(perlayer, n_targets)))
-        p.close()
+        with Pool(os.cpu_count(), maxtasksperchild=1) as p:
+            r = p.map(self._gen_feature, nidx_target, chunksize=int(np.ceil(len(nidx_target)/os.cpu_count())))
         X = np.array(r)
 
         # identify predictables
@@ -1507,15 +1508,15 @@ class Data:
 
         return X, self.gen_labels(nidxs=nidx_target), predictable
 
-    def _gen_feature(self, nidx, lidx2fidx, perlayer):
+    def _gen_feature(self, nidx):
 
-        lidx2r = self.build_lidx2radius(nidxs={nidx}, perlayer=perlayer)
+        lidx2r = self.build_lidx2radius(nidxs={nidx})
         feat = np.zeros(len(self.link2featidx))
-        for n, r in lidx2r.items():
-            if n in lidx2fidx:
-                feat[lidx2fidx[n]] = r
+        for l, r in lidx2r.items():
+            if l in self.lidx2fidx:
+                feat[self.lidx2fidx[l]] = r
 
-        del lidx2r, lidx2fidx
+        del lidx2r
 
         return feat
 
@@ -1554,9 +1555,8 @@ class Data:
         # whether to do Spearman eval
         if spearman:
             # parallelize Spearman eval
-            with Pool(os.cpu_count()) as p:
-                r = p.starmap(self.eval_link, zip(lidxs, repeat(y, len(lidxs))))
-            p.close()
+            with Pool(os.cpu_count(), maxtasksperchild=1) as p:
+                r = p.starmap(self.eval_link, zip(lidxs, repeat(y, len(lidxs))), chunksize=int(np.ceil(len(lidxs)/os.cpu_count())))
 
             # screen for valid features
             self.link2featidx = dict()
@@ -1598,7 +1598,7 @@ class Data:
 
         return lidx2fidx
 
-    def build_lidx2radius(self, nidxs, i=0, oldnidxs=None, lidx2r=None, perlayer=False):
+    def build_lidx2radius(self, nidxs, i=0, oldnidxs=None, lidx2r=None):
 
         if not oldnidxs:
             oldnidxs = set()
@@ -1612,7 +1612,7 @@ class Data:
                 if lidx not in lidx2r and self.lidx2ratio[lidx] <= self.maxlidxratio:
                     lidx2r[lidx] = i
                     if i < self.k_neighbors:
-                        if perlayer:
+                        if self.perlayer:
                             newnidxs += list(self.lidx2nidx[lidx] & self.layer2nidx[self.nidx2layer[nidx]] - oldnidxs)
                         else:
                             newnidxs += list(self.lidx2nidx[lidx] - oldnidxs)
@@ -1620,7 +1620,7 @@ class Data:
         oldnidxs |= set(nidxs)
 
         if newnidxs and i < self.k_neighbors:
-            return self.build_lidx2radius(nidxs=set(newnidxs), i=i+1, oldnidxs=(oldnidxs | nidxs), lidx2r=lidx2r, perlayer=perlayer)
+            return self.build_lidx2radius(nidxs=set(newnidxs), i=i+1, oldnidxs=(oldnidxs | nidxs), lidx2r=lidx2r)
         else:
             return lidx2r
 
