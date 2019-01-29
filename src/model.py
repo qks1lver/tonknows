@@ -1487,9 +1487,13 @@ class Data:
             self.build_link2featidx()
 
         # build link index to feature indices dictionary
+        if self.verbose:
+            print(_header_ + 'building lidx2featidx')
         lidx2fidx = self.build_lidx2featidx()
 
         # parallel feature generation
+        if self.verbose:
+            print(_header_ + 'parallel feat gen')
         n_targets = len(nidx_target)
         with Pool(os.cpu_count()) as p:
             r = p.starmap(self._gen_feature, zip(nidx_target, repeat(lidx2fidx, n_targets), repeat(perlayer, n_targets)))
@@ -1497,6 +1501,8 @@ class Data:
         X = np.array(r)
 
         # identify predictables
+        if self.verbose:
+            print(_header_ + 'find predictables')
         predictable = np.invert(np.all(X == 0, axis=1))
 
         return X, self.gen_labels(nidxs=nidx_target), predictable
@@ -1509,7 +1515,7 @@ class Data:
             if n in lidx2fidx:
                 feat[lidx2fidx[n]] = r
 
-        del lidx2r
+        del lidx2r, lidx2fidx
 
         return feat
 
