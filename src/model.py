@@ -30,7 +30,7 @@ from sklearn.dummy import DummyClassifier
 from sklearn.preprocessing import minmax_scale
 from datetime import datetime
 from time import time
-from src.iofunc import open_pkl
+from src.iofunc import open_pkl, gen_id
 from multiprocessing import Pool
 from itertools import repeat
 import pdb
@@ -428,7 +428,7 @@ class Model:
         print('** Because this is evaluating with the training data, classifier performances should be very high.')
 
         # Assign model ID - this is here so that if retrained, it would be known that it is not the same model anymore
-        self.id = 'lm_%s-%s' % (datetime.now().strftime('%Y%m%d%H%M%S'), ''.join(np.random.choice(list('abcdef123456'), 6)))
+        self.id = 'm_%s' % gen_id()
 
         if self.verbose:
             te = (time() - t0) / 60
@@ -604,16 +604,16 @@ class Model:
             _ = f.write('%s\tknown_labels\tpredictions\tmerged\n' % data.columns['nodes'])
 
             # Write predictions
-            for r, yopt in zip(predictions['nidx'], predictions['yopt']):
+            for n, yopt in zip(predictions['nidx'], predictions['yopt']):
                 str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
-                _ = f.write('%s\t\t%s\t%s\n' % (data.nodes[r][0], str_opt, str_opt))
+                _ = f.write('%s\t\t%s\t%s\n' % (data.nodes[n][0], str_opt, str_opt))
 
             # Write known labels
             if evaluations:
-                for r, yopt, ytruth in zip(evaluations['nidx'], evaluations['yopt'], evaluations['ytruth']):
+                for n, yopt, ytruth in zip(evaluations['nidx'], evaluations['yopt'], evaluations['ytruth']):
                     str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
                     str_truth = '/'.join(labels[np.array(ytruth, dtype=bool)])
-                    _ = f.write('%s\t%s\t%s\t%s\n' % (data.nodes[r][0], str_truth, str_opt, str_truth))
+                    _ = f.write('%s\t%s\t%s\t%s\n' % (data.nodes[n][0], str_truth, str_opt, str_truth))
 
         print('Results written to %s\n' % p_out)
 
