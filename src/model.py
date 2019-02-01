@@ -666,7 +666,7 @@ class Model:
         for istep in range(n_steps):
 
             nidxs += path[istep]['nidxs']
-            print('\n[ Step %d/%d ]  %d nodes / %d expandable links' % (istep+1, n_steps, len(nidxs), len(path[istep]['links'])))
+            print('\n[ Step %d/%d ]  %d nodes / %d expandable links' % (istep+1, n_steps, len(path[istep]['nidxs']), len(path[istep]['links'])))
 
             # Predict
             predictions = self.clf_all_predict(nidx_target=nidxs, data=data)
