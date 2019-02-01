@@ -357,7 +357,7 @@ class Model:
             ]
             scores = list()
 
-            for j_fold, (opt_train_idx, opt_test_idx) in enumerate(kf_opt.split(X=self.datas[self.train_idx].nidx_train, y=self.datas[self.train_idx].gen_labels(condense_labels=True))):
+            for j_fold, (opt_idxs, cv_train_idxs) in enumerate(kf_opt.split(X=self.datas[self.train_idx].nidx_train, y=self.datas[self.train_idx].gen_labels(condense_labels=True))):
 
                 if self.verbose:
                     print(rep_str + ' - CV %d/%d ---\_____\n' % (j_fold + 1, self.kfold_cv))
@@ -372,33 +372,41 @@ class Model:
                 self.clf_net = self.gen_rfc()
 
                 # Split data
-                opt_train_nidx = np.array([self.datas[self.train_idx].nidx_train[i] for i in opt_train_idx])
-                opt_test_nidx = np.array([self.datas[self.train_idx].nidx_train[i] for i in opt_test_idx])
+                opt_nidxs = np.array([self.datas[self.train_idx].nidx_train[i] for i in opt_idxs])
+                cv_train_nidxs = np.array([self.datas[self.train_idx].nidx_train[i] for i in cv_train_idxs])
 
-                # Partition train/eval nidx
-                _, _, cv_train_nidx, cv_eval_nidx = train_test_split(np.zeros(len(opt_train_nidx)), opt_train_nidx, test_size= 1/(self.kfold_cv - 1), shuffle=True, stratify=self.datas[self.train_idx].gen_labels(
-                    nidxs=opt_train_nidx, condense_labels=True))
+                # Partition train/eval nidx for reverse k-fold CV training
+                _, _, opt_eval_nidxs, opt_train_nidxs = train_test_split(
+                    np.zeros(len(opt_nidxs)),
+                    opt_nidxs,
+                    test_size= 1/(self.kfold_cv - 1),
+                    shuffle=True,
+                    stratify=self.datas[self.train_idx].gen_labels(nidxs=opt_nidxs, condense_labels=True))
 
                 # Train clfs
-                self._train_clfs(train_nidx=cv_train_nidx)
+                if self.verbose:
+                    print('\n> Training base classifiers ...')
+                self._train_clfs(train_nidx=cv_train_nidxs)
 
                 # Evaluate train with cv_train data
                 if self.verbose:
                     print('\n> Evaluating base classifiers with cv_train partition ...')
-                self.clfs_predict(nidx_target=cv_train_nidx, data=self.datas[self.train_idx], to_eval=True)
+                self.clfs_predict(nidxs_target=cv_train_nidxs, data=self.datas[self.train_idx], to_eval=True)
 
                 # Evaluate pre-optimization with cv_eval data
                 if self.verbose:
-                    print('> Evaluating base classifiers with cv_eval partition ...')
-                cv_res = self.clfs_predict(nidx_target=cv_eval_nidx, data=self.datas[self.train_idx], to_eval=True)
+                    print('\n> Evaluating base classifiers with cv_eval partition ...')
+                cv_res = self.clfs_predict(nidxs_target=opt_train_nidxs, data=self.datas[self.train_idx], to_eval=True)
 
                 # Train clf-opt with cv_eval partition results
+                if self.verbose:
+                    print('\n> Training clf-opt ...')
                 self._train_clf_opt(predictions=cv_res)
 
                 # Evaluate clf-opt with opt_test partition
                 if self.verbose:
-                    print('> Evaluating optimized classifier with opt_test partition ...')
-                opt_res = self.clfs_predict(nidx_target=opt_test_nidx, data=self.datas[self.train_idx], to_eval=True)
+                    print('\n> Evaluating optimized classifier with opt_test partition ...')
+                opt_res = self.clfs_predict(nidxs_target=opt_eval_nidxs, data=self.datas[self.train_idx], to_eval=True)
                 opt_results = opt_results.append(opt_res, ignore_index=True)
 
                 # Append score to optimize clf-net parameter
@@ -408,6 +416,9 @@ class Model:
                 else:
                     aim = self.aim.replace('hard', '')
                     scores.append(r[aim])
+
+                # reset link2featidx
+                self.datas[self.train_idx].link2featidx = {}
 
             # Aggregate results from clf-net parameter search
             self._set_clf_net_param(param, scores)
@@ -424,7 +435,7 @@ class Model:
 
         # Evaluate final clf-opt with all data
         print('\n> Evaluating final classifier ...')
-        self.clfs_predict(nidx_target=self.datas[self.train_idx].nidx_train, data=self.datas[self.train_idx], to_eval=True)
+        self.clfs_predict(nidxs_target=self.datas[self.train_idx].nidx_train, data=self.datas[self.train_idx], to_eval=True)
         print('** Because this is evaluating with the training data, classifier performances should be very high.')
 
         # Assign model ID - this is here so that if retrained, it would be known that it is not the same model anymore
@@ -510,7 +521,7 @@ class Model:
             # Transfer feature list from training data
             data.link2featidx = self.datas[self.train_idx].link2featidx
 
-            predictions = self.clfs_predict(nidx_target=data.nidx_train, data=data, to_eval=True)
+            predictions = self.clfs_predict(nidxs_target=data.nidx_train, data=data, to_eval=True)
 
         else:
             print('\n { No evaluation dataset }\n')
@@ -580,7 +591,7 @@ class Model:
                 self.train_multilayers = False
 
             # Predict
-            predictions = self.clfs_predict(nidx_target=data.nidx_pred, data=data)
+            predictions = self.clfs_predict(nidxs_target=data.nidx_pred, data=data)
             result['pred'] = predictions
 
             # Write results
@@ -619,7 +630,7 @@ class Model:
 
         return p_out
 
-    def clfs_predict(self, nidx_target, data=None, to_eval=False, fill=True):
+    def clfs_predict(self, nidxs_target, data=None, to_eval=False, fill=True):
 
         """
         This runs predictions with all base classifiers and the final model for the nodes specified through their
@@ -630,7 +641,7 @@ class Model:
         predictions from all the base classifiers. The proportion of data that has labels predicted for (coverage)
         and "filled" will be displayed if verbose is enabled.
 
-        :param nidx_target: A Python list of indices of nodes in the Data object
+        :param nidxs_target: A Python list of indices of nodes in the Data object
         :param data: Optional, Data object loaded with dataset to predict for. If None, then .train_data is used
         :param to_eval: Optional, Boolean to specify whether this is running an evaluation or prediction
         :param fill: Optional, Boolean to specify whether to use predictions from the base classifiers to fill samples
@@ -642,112 +653,166 @@ class Model:
 
         if not data:
             data = self.datas[self.train_idx]
+        train_idx0 = self.train_idx
+        node_labels0 = data.node_labels.copy()
 
-        # Predict
-        predictions = self.clf_all_predict(nidx_target=nidx_target, data=data)
+        # Compute expansion path
+        path = data.recruit(nidxs_remain=set(nidxs_target))
+        n_steps = len(path)
+        if n_steps > 1:
+            print('\n [ Network expansion path contains %d steps ]' % n_steps)
 
-        # Baseline
-        y_bkg_pred = self.bkg_predict(n_samples=len(nidx_target), data=data)
-        predictions['ybkg'] = y_bkg_pred
+        nidxs = []
+        predictions = None
+        for istep in range(n_steps):
 
-        # Predict with clf-opt if trained
-        if self.clf_opt_trained:
-            X = self._construct_clf_opt_X(predictions)
-            predictions['yopt'] = self._predict_proba(self.clf_opt, X)
+            nidxs += path[istep]['nidxs']
+            print('\n [ Step %d ] %d nodes / %d expandable links' % (istep+1, len(nidxs), len(path[istep]['links'])))
 
-            # Fill (fill==True) what clf-opt did not predict with the joint solutions from base classifiers
-            if fill:
-                coverage0 = self._calc_coverage(predictions['yopt'])
-                filling_coverage = 0.
-                if coverage0 < 1.:
-                    i_missing = np.invert(np.any(self._round(predictions['yopt']), axis=1))
-                    inf_fill = predictions['yinf'][i_missing]
-                    match_fill  = predictions['ymatch'][i_missing]
-                    net_fill = predictions['ynet'][i_missing]
-                    y_fill = (self._round(inf_fill) > 0) | (self._round(match_fill) > 0) | (self._round(net_fill) > 0)
-                    filling_coverage = self._calc_coverage(y_fill) * len(y_fill) / len(i_missing)
-                    predictions['yopt'][i_missing] = y_fill
+            # Predict
+            predictions = self.clf_all_predict(nidx_target=nidxs, data=data)
 
-                if self.verbose:
-                    coverage1 = self._calc_coverage(predictions['yopt'])
-                    print('\n[ clf-opt ]\n  no-fill coverage: {:.1%}\n  filling: {:.1%}\n  filled coverage: {:.1%}\n'.format(coverage0, filling_coverage, coverage1))
-                predictions['fill'] = filling_coverage
+            # Baseline
+            y_bkg_pred = self.bkg_predict(n_samples=len(nidxs), data=data)
+            predictions['ybkg'] = y_bkg_pred
 
-        # Show scores
-        if to_eval:
-            # header
-            print('__/ Evaluation \_______________________________________')
-            print('|  Clf   AUC-ROC    F1    Precision  Recall  Coverage |')
-            print('| -----  -------  ------  ---------  ------  -------- |')
+            # Predict with clf-opt if trained
+            if self.clf_opt_trained:
+                X = self._construct_clf_opt_X(predictions)
+                predictions['yopt'] = self._predict_proba(self.clf_opt, X)
 
-            # baseline
-            r = self.scores(y=predictions['ytruth'], y_pred=predictions['ybkg'])
-            coverage = self._calc_coverage(predictions['ybkg'])
-            print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
-                'BKG', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
+                # Fill (fill==True) what clf-opt did not predict with the joint solutions from base classifiers
+                if fill:
+                    coverage0 = self._calc_coverage(predictions['yopt'])
+                    filling_coverage = 0.
+                    if coverage0 < 1.:
+                        i_missing = np.invert(np.any(self._round(predictions['yopt']), axis=1))
+                        '''inf_fill = predictions['yinf'][i_missing]
+                        match_fill  = predictions['ymatch'][i_missing]
+                        net_fill = predictions['ynet'][i_missing]
+                        y_fill = (self._round(inf_fill) > 0) | (self._round(match_fill) > 0) | (self._round(net_fill) > 0)'''
+                        y_fill = self._y_merge(predictions=predictions, i=i_missing)
+                        filling_coverage = self._calc_coverage(y_fill) * len(y_fill) / len(i_missing)
+                        predictions['yopt'][i_missing] = y_fill
 
-            # clf-inf
-            idx = predictions['inf']
-            r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['yinf'][idx])
-            coverage = self._calc_coverage(predictions['yinf'])
-            print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
-                'INF', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
+                    if self.verbose:
+                        coverage1 = self._calc_coverage(predictions['yopt'])
+                        print('\n[ clf-opt ]\n  no-fill coverage: {:.1%}\n  filling: {:.1%}\n  filled coverage: {:.1%}\n'.format(coverage0, filling_coverage, coverage1))
+                    predictions['fill'] = filling_coverage
 
-            # clf-match
-            idx = predictions['match']
-            r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['ymatch'][idx])
-            coverage = self._calc_coverage(predictions['ymatch'])
-            print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
-                'MATCH', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
+            # Show scores
+            if self.verbose:
+                if to_eval:
+                    # header
+                    print('__/ Evaluation \_______________________________________')
+                    print('|  Clf   AUC-ROC    F1    Precision  Recall  Coverage |')
+                    print('| -----  -------  ------  ---------  ------  -------- |')
 
-            # clf-net
-            idx = predictions['net']
-            r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['ynet'][idx])
-            coverage = self._calc_coverage(predictions['ynet'])
-            print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
-                'NET', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
+                    # baseline
+                    r = self.scores(y=predictions['ytruth'], y_pred=predictions['ybkg'])
+                    coverage = self._calc_coverage(predictions['ybkg'])
+                    print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
+                        'BKG', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
-            # clf-opt
-            if 'yopt' in predictions:
-                r = self.scores(y=predictions['ytruth'], y_pred=predictions['yopt'])
-                coverage = self._calc_coverage(predictions['yopt'])
-                print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
-                    '*OPT', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
+                    # clf-inf
+                    idx = predictions['inf']
+                    r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['yinf'][idx])
+                    coverage = self._calc_coverage(predictions['yinf'])
+                    print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
+                        'INF', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
-            if not np.all(r['label_ratios']):
-                locs = ', '.join([self.datas[self.train_idx].labels[i] for i, j in enumerate(r['label_ratios']) if j > 0])
-                print('** This evaluation only represents labels: %s' % locs)
+                    # clf-match
+                    idx = predictions['match']
+                    r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['ymatch'][idx])
+                    coverage = self._calc_coverage(predictions['ymatch'])
+                    print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
+                        'MATCH', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
-        else:
-            # header
-            print('__/ Prediction \___')
-            print('|  Clf   Coverage |')
-            print('| -----  -------- |')
+                    # clf-net
+                    idx = predictions['net']
+                    r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['ynet'][idx])
+                    coverage = self._calc_coverage(predictions['ynet'])
+                    print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
+                        'NET', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
-            # baseline
-            coverage = self._calc_coverage(predictions['ybkg'])
-            print('| {:<5}  {:>8.1%} |'.format('BKG', coverage))
+                    # clf-opt
+                    if 'yopt' in predictions:
+                        r = self.scores(y=predictions['ytruth'], y_pred=predictions['yopt'])
+                        coverage = self._calc_coverage(predictions['yopt'])
+                        print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
+                            '*OPT', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
-            # clf-inf
-            coverage = self._calc_coverage(predictions['yinf'])
-            print('| {:<5}  {:>8.1%} |'.format('INF', coverage))
+                    if not np.all(r['label_ratios']):
+                        locs = ', '.join([self.datas[self.train_idx].labels[i] for i, j in enumerate(r['label_ratios']) if j > 0])
+                        print('** This evaluation only represents labels: %s' % locs)
 
-            # clf-match
-            coverage = self._calc_coverage(predictions['ymatch'])
-            print('| {:<5}  {:>8.1%} |'.format('MATCH', coverage))
+                else:
+                    # header
+                    print('__/ Prediction \___')
+                    print('|  Clf   Coverage |')
+                    print('| -----  -------- |')
 
-            # clf-net
-            coverage = self._calc_coverage(predictions['ynet'])
-            print('| {:<5}  {:>8.1%} |'.format('NET', coverage))
+                    # baseline
+                    coverage = self._calc_coverage(predictions['ybkg'])
+                    print('| {:<5}  {:>8.1%} |'.format('BKG', coverage))
 
-            # clf-opt
-            if 'yopt' in predictions:
-                coverage = self._calc_coverage(predictions['yopt'])
-                print('| {:<5}  {:>8.1%} |'.format('*OPT', coverage))
+                    # clf-inf
+                    coverage = self._calc_coverage(predictions['yinf'])
+                    print('| {:<5}  {:>8.1%} |'.format('INF', coverage))
 
-            print()
+                    # clf-match
+                    coverage = self._calc_coverage(predictions['ymatch'])
+                    print('| {:<5}  {:>8.1%} |'.format('MATCH', coverage))
+
+                    # clf-net
+                    coverage = self._calc_coverage(predictions['ynet'])
+                    print('| {:<5}  {:>8.1%} |'.format('NET', coverage))
+
+                    # clf-opt
+                    if 'yopt' in predictions:
+                        coverage = self._calc_coverage(predictions['yopt'])
+                        print('| {:<5}  {:>8.1%} |'.format('*OPT', coverage))
+
+                    print()
+
+            if (istep + 1) < n_steps:
+
+                # Set training data index to the current evaluating data
+                self.train_idx = len(self.datas) - 1
+
+                if path[istep]['links']:
+
+                    # expand features
+                    n = len(data.link2featidx)
+                    data.link2featidx.update({link: n+i for i, link in enumerate(path[istep]['links'])})
+
+                    # update labels with predictions
+                    if 'yopt' in predictions:
+                        yp = self._round(predictions['yopt'])
+                    else:
+                        yp = self._y_merge(predictions=predictions)
+                    data.update_labels(nidxs=path[istep]['nidxs'], y=yp)
+
+                    # retrain model with updated results and features from this expansion
+                    self._train_clfs(train_nidx=nidxs)
+
+        # reset training data index and node labels
+        self.train_idx = train_idx0
+        data.node_labels = node_labels0.copy()
 
         return predictions
+
+    def _y_merge(self, predictions, i=None):
+
+        if i is None:
+            i = np.ones(len(predictions['yinf']), dtype=bool)
+
+        inf_fill = predictions['yinf'][i]
+        match_fill = predictions['ymatch'][i]
+        net_fill = predictions['ynet'][i]
+        y_merge = (self._round(inf_fill) > 0) | (self._round(match_fill) > 0) | (self._round(net_fill) > 0)
+
+        return y_merge
 
     def clf_all_predict(self, nidx_target, data=None):
 
@@ -1487,7 +1552,7 @@ class Data:
             nidx_target = self.nidx_train.copy()
 
         if not self.link2featidx:
-            self.build_link2featidx()
+            self.link2featidx = self.build_link2featidx(nidxs=nidx_target)
 
         # build link index to feature indices dictionary
         self.lidx2fidx = self.build_lidx2featidx()
@@ -1525,34 +1590,38 @@ class Data:
 
         return feat
 
-    def build_link2featidx(self):
+    def build_link2featidx(self, nidxs=None):
 
         if self.verbose:
-            print('First time compiling features, can take up to a few minutes ...')
+            print('Compiling features ...')
 
-        n_feats = self._build_link2featidx()
+        link2featidx = self._build_link2featidx(nidxs=nidxs)
 
-        while not self.link2featidx and self.spearman_cutoff <= 0.4:
+        while not link2featidx and self.spearman_cutoff <= 0.4:
             print('  Could not compile features, try relaxing Spearman cutoff %.2f -> %.2f' % (self.spearman_cutoff, self.spearman_cutoff * 2))
             self.spearman_cutoff *= 2
-            n_feats = self._build_link2featidx()
+            link2featidx = self._build_link2featidx(nidxs=nidxs)
 
-        if not self.link2featidx:
+        if not link2featidx:
             print('  Compiling features without Spearman correlation')
-            n_feats = self._build_link2featidx(spearman=False)
+            link2featidx = self._build_link2featidx(nidxs=nidxs, spearman=False)
 
         if self.verbose:
-            print('  Compiled %d features' % n_feats)
+            print('  Compiled %d features' % len(link2featidx))
 
-        return self
+        return link2featidx
 
-    def _build_link2featidx(self, spearman=True):
+    def _build_link2featidx(self, nidxs=None, spearman=True):
 
+        if nidxs is None:
+            nidxs = self.nidx_train
+
+        link2featidx = dict()
         y = self.gen_labels()
         lidxs = []
 
         # identify all links
-        for n in self.nidx_train:
+        for n in nidxs:
             for l in self.nidx2lidx[n]:
                 if l not in lidxs:
                     lidxs.append(l)
@@ -1560,37 +1629,43 @@ class Data:
         # whether to do Spearman eval
         if spearman:
             # parallelize Spearman eval
-            with Pool(os.cpu_count(), maxtasksperchild=1) as p:
-                r = p.starmap(self.eval_link, zip(lidxs, repeat(y, len(lidxs))), chunksize=int(np.ceil(len(lidxs)/os.cpu_count())))
-                p.close()
-                p.join()
-            del p
+            r = self.eval_link(lidxs=lidxs)
 
             # screen for valid features
-            self.link2featidx = dict()
             idx = 0
             for i, x in enumerate(r):
                 if x:
-                    self.link2featidx[self.links[lidxs[i]]] = idx
+                    link2featidx[self.links[lidxs[i]]] = idx
                     idx += 1
         else:
-            self.link2featidx = {l:i for i,l in enumerate(lidxs)}
+            link2featidx = {l:i for i,l in enumerate(lidxs)}
 
-        n_feats = len(self.link2featidx)
+        return link2featidx
 
-        return n_feats
+    def eval_link(self, lidxs):
 
-    def eval_link(self, lidx0, y):
+        n_lidxs = len(lidxs)
+        y_feats = np.transpose(self.gen_labels())
+
+        # parallelize Spearman eval
+        with Pool(os.cpu_count(), maxtasksperchild=1) as p:
+            r = p.starmap(self._eval_link, zip(lidxs, repeat(y_feats, n_lidxs)),
+                          chunksize=int(np.ceil(n_lidxs / os.cpu_count())))
+            p.close()
+            p.join()
+        del p
+
+        return r
+
+    def _eval_link(self, lidx0, y):
 
         x = [1 if lidx0 in self.nidx2lidx[n] else 0 for n in self.nidx_train]
 
         if np.any(x):
-            pvals = np.array([spearmanr(x, yi)[1] if np.any(yi) else 1. for yi in np.transpose(y)])
+            pvals = np.array([spearmanr(x, yi)[1] if np.any(yi) else 1. for yi in y])
             pvals[np.isnan(pvals)] = 1.
         else:
             return False
-
-        del x
 
         return np.any(pvals < self.spearman_cutoff)
 
@@ -1695,9 +1770,11 @@ class Data:
 
         if condense_labels:
             # This should be improved, since this will fail if there are labels with exactly the same number of samples
+            # Current solution use a bit of noise to minimize conflicts/favors
             y = self.encode_labels(y)
             lab_weights = 1. - np.mean(y, axis=0)
-            y_condensed = np.argmax(minmax_scale(y * lab_weights, axis=1), axis=1)
+            noise = np.random.normal(loc=0, scale=0.0001, size=np.shape(y))
+            y_condensed = np.argmax(minmax_scale(y * lab_weights + noise, axis=1), axis=1)
             return y_condensed
 
         return self.encode_labels(y)
@@ -1716,6 +1793,58 @@ class Data:
             y.append([1 if l in lab else 0 for l in self.labels])
 
         return np.array(y, dtype=float)
+
+    def update_labels(self, nidxs, y):
+
+        """
+        Update labels using y array from training/eval/prediction
+
+        :param nidxs:
+        :param y:
+        :return:
+        """
+
+        y = np.array(y, dtype=bool)
+        for n, yi in zip(nidxs, y):
+            self.node_labels[n] = [self.labels[i] for i, j in enumerate(yi) if j]
+
+        return self
+
+    def recruit(self, nidxs_remain, oldlinks=None):
+
+        """
+        Identify which sets of nidxs to evaluate/add and which links to expand in each expansion of recruitment
+
+        :param nidxs_remain:
+        :param oldlinks:
+        :return:
+        """
+
+        steps = [{'nidxs': list(), 'links': set()}]
+        new_links = set()
+
+        if oldlinks is None:
+            oldlinks = set(self.link2featidx.keys())
+
+        # all nodes associated to oldlinks
+        nidxs = set([n for link in oldlinks for n in self.lidx2nidx[self.link2lidx[link]] if link in self.link2lidx])
+
+        # neighbor nodes to eval/train in this expansion
+        new_nidxs = nidxs & nidxs_remain
+        if new_nidxs:
+            # remaining node for next expansion
+            nidxs_remain -= new_nidxs
+
+            # find new links to expand feature set
+            steps[0]['nidxs'] = list(new_nidxs)
+            new_links = set([self.links[l] for n in nidxs for l in self.nidx2lidx[n]]) - oldlinks
+            if new_links:
+                steps[0]['links'] = new_links
+
+        if nidxs_remain and new_links:
+            return steps + self.recruit(nidxs_remain=nidxs_remain, oldlinks=oldlinks | new_links)
+
+        return steps
 
     def _compile_networks(self):
 
