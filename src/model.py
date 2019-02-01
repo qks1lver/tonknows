@@ -700,9 +700,6 @@ class Model:
 
             if (istep + 1) < n_steps:
 
-                # Set training data index to the current evaluating data
-                self.train_idx = len(self.datas) - 1
-
                 if path[istep]['links']:
 
                     # expand features
@@ -716,14 +713,17 @@ class Model:
                         yp = self._y_merge(predictions=predictions)
                     data.update_labels(nidxs=path[istep]['nidxs'], y=yp)
 
-                    # retrain model with updated results and features from this expansion
+                    # Set training data index to the current evaluating data
+                    self.train_idx = len(self.datas) - 1
+
+                    # retrain model with predictions and features from this expansion
                     self._train_clfs(train_nidx=nidxs)
 
                     # reset node labels after training
                     data.node_labels = node_labels0.copy()
 
-        # reset training data index
-        self.train_idx = train_idx0
+                    # reset training data index
+                    self.train_idx = train_idx0
 
         return predictions
 
@@ -1824,7 +1824,7 @@ class Data:
         :return:
         """
 
-        steps = [{'nidxs': list(), 'links': set()}]
+        steps = [{'nidxs': list(nidxs_remain), 'links': set()}]
         new_links = set()
 
         if oldlinks is None:
