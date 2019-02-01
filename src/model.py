@@ -75,8 +75,8 @@ class Model:
         self.masklayer = []
 
         # Model parameters
-        self.kfold_cv = 10
-        self.n_repeat = 1
+        self.kfold_cv = 3
+        self.n_repeat = 10
         self.auc_roc_avg = 'weighted'
         self.maxinflidxratio = 0.01
         self.round_cutoff = None
@@ -410,7 +410,7 @@ class Model:
                 opt_results = opt_results.append(opt_res, ignore_index=True)
 
                 # Append score to optimize clf-net parameter
-                r = self.scores(opt_res['ytruth'], opt_res['yopt'])
+                r = self.scores(opt_res['ytruth'], opt_res['ynet'])
                 if not self.aim:
                     scores.append(r['aucroc'])
                 else:
