@@ -659,15 +659,14 @@ class Model:
         # Compute expansion path
         path = data.recruit(nidxs_remain=set(nidxs_target))
         n_steps = len(path)
-        if n_steps > 1:
-            print('\n [ Network expansion path contains %d steps ]' % n_steps)
+        print('\n  { Network expansion path contains %d steps }' % n_steps)
 
         nidxs = []
         predictions = None
         for istep in range(n_steps):
 
             nidxs += path[istep]['nidxs']
-            print('\n [ Step %d ] %d nodes / %d expandable links' % (istep+1, len(nidxs), len(path[istep]['links'])))
+            print('\n[ Step %d/%d ]  %d nodes / %d expandable links' % (istep+1, n_steps, len(nidxs), len(path[istep]['links'])))
 
             # Predict
             predictions = self.clf_all_predict(nidx_target=nidxs, data=data)
@@ -1827,7 +1826,7 @@ class Data:
             oldlinks = set(self.link2featidx.keys())
 
         # all nodes associated to oldlinks
-        nidxs = set([n for link in oldlinks for n in self.lidx2nidx[self.link2lidx[link]] if link in self.link2lidx])
+        nidxs = set([n for link in oldlinks if link in self.link2lidx for n in self.lidx2nidx[self.link2lidx[link]]])
 
         # neighbor nodes to eval/train in this expansion
         new_nidxs = nidxs & nidxs_remain
