@@ -733,7 +733,7 @@ class Model:
                     yp = self._round(predictions['yopt'])
                 else:
                     yp = self._y_merge(predictions=predictions)
-                nidxs_conv = [self.datas[blend_idx].nidxconvert[eval_idx][n] for n in path[istep]['nidxs']]
+                nidxs_conv = nidxs.copy()
                 labels0 = self.datas[blend_idx].node_labels.copy()
                 self.datas[blend_idx].update_labels(nidxs=nidxs_conv, y=yp)
 
@@ -890,6 +890,13 @@ class Model:
                 datax.nidxconvert[i] = {n: n + n_nodes for n in range(len(self.datas[i].node_links))}
                 n_nodes = len(datax.node_links)
 
+                # update link frequency
+                for l in self.datas[i].links:
+                    if l in datax.link2freq:
+                        datax.link2freq[l] += self.datas[i].link2freq[l]
+                    else:
+                        datax.link2freq[l] = self.datas[i].link2freq[l]
+
         datax.link2lidx = {l:j for j,l in enumerate(datax.links)}
         datax.map_data()
 
@@ -948,17 +955,20 @@ class Model:
         y_inferred = []
         predictable = np.zeros(len(nidx_target), dtype=bool)
 
-        for i,r in enumerate(nidx_target):
+        for i, n in enumerate(nidx_target):
             nidx = []
-            lidx = data.nidx2lidx[r]
-            for n in lidx:
-                if data.lidx2ratio[n] <= self.maxinflidxratio:
-                    nidx += list(data.lidx2nidx[n])
+            try:
+                lidx = data.nidx2lidx[n]
+            except:
+                pdb.set_trace()
+            for l in lidx:
+                if data.lidx2ratio[l] <= self.maxinflidxratio:
+                    nidx += list(data.lidx2nidx[l])
             nidx = set(nidx) & set(data.nidx_train)
             if self.train_multilayers:
-                nidx = list((nidx - {r}) & data.layer2nidx[data.nidx2layer[r]])
+                nidx = list((nidx - {n}) & data.layer2nidx[data.nidx2layer[n]])
             else:
-                nidx = list(nidx - {r})
+                nidx = list(nidx - {n})
 
             n_nodes = sum([1 for r in nidx if data.node_labels[r]])
             if n_nodes:
@@ -1510,7 +1520,7 @@ class Data:
         if self.verbose:
             print(_header_ + 'Mapping data for %s ...' % self.p_data)
         for nidx, links in enumerate(self.node_links):
-            lidx = set([self.link2lidx[x] for x in links if x in self.link2lidx and x in link2keep and link2keep[x]])
+            lidx = set([self.link2lidx[x] for x in links if x in self.link2lidx and link2keep[x]])
             if lidx:
                 self.nidx2lidx[nidx] = lidx
                 for c in lidx:
