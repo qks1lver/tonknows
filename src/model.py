@@ -1510,7 +1510,7 @@ class Data:
         if self.verbose:
             print(_header_ + 'Mapping data for %s ...' % self.p_data)
         for nidx, links in enumerate(self.node_links):
-            lidx = set([self.link2lidx[x] for x in links if x in self.link2lidx and link2keep[x]])
+            lidx = set([self.link2lidx[x] for x in links if x in self.link2lidx and x in link2keep and link2keep[x]])
             if lidx:
                 self.nidx2lidx[nidx] = lidx
                 for c in lidx:
