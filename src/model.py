@@ -33,6 +33,7 @@ from time import time
 from src.iofunc import open_pkl, gen_id
 from multiprocessing import Pool
 from itertools import repeat
+from copy import deepcopy
 import pdb
 
 
@@ -88,7 +89,7 @@ class Model:
         self.min_imp_dec_history = [self.min_impurity_decrease]
         self.min_sample_leaf = 2
         self.min_leaf_history = [self.min_sample_leaf]
-        self.param_tune_scale = 0.3
+        self.param_tune_scale = 0.2
 
         # Initialize classifiers
         self.clf_net = self.gen_rfc()
@@ -393,20 +394,20 @@ class Model:
                     print('\n> Evaluating base classifiers with cv_train partition ...')
                 self.clfs_predict(nidxs_target=cv_train_nidxs, data=self.datas[self.train_idx], to_eval=True)
 
-                # Evaluate pre-optimization with cv_eval data
+                # Evaluate pre-optimization with opt_train data
                 if self.verbose:
                     print('\n> Evaluating base classifiers with cv_eval partition ...')
-                cv_res = self.clfs_predict(nidxs_target=opt_train_nidxs, data=self.datas[self.train_idx], to_eval=True)
+                cv_res = self.clfs_predict(nidxs_target=opt_train_nidxs, data=self.datas[self.train_idx], to_eval=True, nidxs_train=cv_train_nidxs)
 
-                # Train clf-opt with cv_eval partition results
+                # Train clf-opt with opt_train partition results
                 if self.verbose:
                     print('\n> Training clf-opt ...')
                 self._train_clf_opt(predictions=cv_res)
 
-                # Evaluate clf-opt with opt_test partition
+                # Evaluate clf-opt with opt_eval partition
                 if self.verbose:
                     print('\n> Evaluating optimized classifier with opt_test partition ...')
-                opt_res = self.clfs_predict(nidxs_target=opt_eval_nidxs, data=self.datas[self.train_idx], to_eval=True)
+                opt_res = self.clfs_predict(nidxs_target=opt_eval_nidxs, data=self.datas[self.train_idx], to_eval=True, nidxs_train=cv_train_nidxs)
                 opt_results = opt_results.append(opt_res, ignore_index=True)
 
                 # Append score to optimize clf-net parameter
@@ -630,7 +631,7 @@ class Model:
 
         return p_out
 
-    def clfs_predict(self, nidxs_target, data=None, to_eval=False, fill=True):
+    def clfs_predict(self, nidxs_target, data=None, to_eval=False, fill=True, nidxs_train=None):
 
         """
         This runs predictions with all base classifiers and the final model for the nodes specified through their
@@ -648,31 +649,39 @@ class Model:
         that the final model did not predict any labels for. Even with True, it does not guarantee a prediction
         will be given, since the base classifiers may not be able to predict for the sample or may not predict any
         labels for the sample as well.
+        :param nidxs_train: nodes used in training
         :return: A dictionary containing predictions from all the base classifiers and the final model
         """
 
         if not data:
             data = self.datas[self.train_idx]
         train_idx0 = self.train_idx
-        node_labels0 = data.node_labels.copy()
+        eval_idx = len(self.datas) - 1
+
+        # combine training and testing data into layers of new Data object used to retrain clf-net during expansion
+        self.datas.append(self.blend_data())
+        blend_idx = len(self.datas) - 1
 
         # Compute expansion path
         path = data.recruit(nidxs_remain=set(nidxs_target))
         n_steps = len(path)
         print('\n  { Network expansion path contains %d steps }' % n_steps)
 
+        # Retain original base-classifiers
+        clf_pkg = self.archive_clfs()
+
         nidxs = []
         predictions = None
         for istep in range(n_steps):
 
-            nidxs += path[istep]['nidxs']
+            nidxs += [self.datas[blend_idx].nidxconvert[eval_idx][n] for n in path[istep]['nidxs']]
             print('\n[ Step %d/%d ]  %d nodes / %d expandable links' % (istep+1, n_steps, len(path[istep]['nidxs']), len(path[istep]['links'])))
 
             # Predict
-            predictions = self.clf_all_predict(nidx_target=nidxs, data=data)
+            predictions = self.clf_all_predict(nidx_target=nidxs, data=self.datas[blend_idx])
 
             # Baseline
-            y_bkg_pred = self.bkg_predict(n_samples=len(nidxs), data=data)
+            y_bkg_pred = self.bkg_predict(n_samples=len(nidxs), data=self.datas[blend_idx])
             predictions['ybkg'] = y_bkg_pred
 
             # Predict with clf-opt if trained
@@ -698,32 +707,54 @@ class Model:
             # Show scores
             self._print_eval(predictions=predictions, to_eval=to_eval)
 
-            if (istep + 1) < n_steps:
+            if (istep + 1) < n_steps and path[istep]['links']:
 
-                if path[istep]['links']:
+                new_links = list(path[istep]['links'])
 
-                    # expand features
-                    n = len(data.link2featidx)
-                    data.link2featidx.update({link: n+i for i, link in enumerate(path[istep]['links'])})
+                # Set training data index to the blended data
+                self.train_idx = blend_idx
 
-                    # update labels with predictions
-                    if 'yopt' in predictions:
-                        yp = self._round(predictions['yopt'])
-                    else:
-                        yp = self._y_merge(predictions=predictions)
-                    data.update_labels(nidxs=path[istep]['nidxs'], y=yp)
+                # find expand features with evaluating data then set features in the blended data
+                if self.verbose:
+                    print('\n[ Expanding ] Evaluating %d links' % len(new_links))
+                r = data.eval_lidxs([data.link2lidx[l] for l in new_links])
+                accepted_links = [new_links[i] for i, b in enumerate(r) if b]
+                if self.verbose:
+                    print('[ Expanding ] Accepting %d links' % len(accepted_links))
+                n = len(self.datas[blend_idx].link2featidx)
+                self.datas[blend_idx].link2featidx.update({link: n + i for i, link in enumerate(accepted_links)})
+                if accepted_links and self.verbose:
+                    print('[ Expanding ] Expanded features %d -> %d' % (n, len(self.datas[blend_idx].link2featidx)))
 
-                    # Set training data index to the current evaluating data
-                    self.train_idx = len(self.datas) - 1
+                # update labels with predictions in the blended data
+                if self.verbose:
+                    print('[ Expanding ] Updating labels')
+                if 'yopt' in predictions:
+                    yp = self._round(predictions['yopt'])
+                else:
+                    yp = self._y_merge(predictions=predictions)
+                nidxs_conv = [self.datas[blend_idx].nidxconvert[eval_idx][n] for n in path[istep]['nidxs']]
+                labels0 = self.datas[blend_idx].node_labels.copy()
+                self.datas[blend_idx].update_labels(nidxs=nidxs_conv, y=yp)
 
-                    # retrain model with predictions and features from this expansion
-                    self._train_clfs(train_nidx=nidxs)
+                # Compile all training nodes, which include nodes previously trained and now training in expansion
+                if nidxs_train is not None:
+                    nidxs_conv += [self.datas[blend_idx].nidxconvert[train_idx0][n] for n in nidxs_train]
 
-                    # reset node labels after training
-                    data.node_labels = node_labels0.copy()
+                # retrain model with predictions and features from this expansion
+                if self.verbose:
+                    print('[ Expanding ] Training on expanded network')
+                self._train_clfs(train_nidx=nidxs_conv)
 
-                    # reset training data index
-                    self.train_idx = train_idx0
+                # reset training data index and labels
+                self.train_idx = train_idx0
+                self.datas[blend_idx].node_labels = labels0.copy()
+
+        # Remove blended data
+        self.datas.pop(blend_idx)
+
+        # Restore base-classifiers
+        self.restore_clfs(clf_pkg)
 
         return predictions
 
@@ -817,6 +848,52 @@ class Model:
                 print()
 
         return
+
+    def archive_clfs(self):
+
+        pkg = {
+            'inf': self.maxinflidxratio,
+            'match': deepcopy(self.unique_lidx2labels),
+            'net': deepcopy(self.clf_net),
+        }
+
+        return pkg
+
+    def restore_clfs(self, pkg):
+
+        self.maxinflidxratio = pkg['inf']
+        self.unique_lidx2labels = deepcopy(pkg['match'])
+        self.clf_net = deepcopy(pkg['net'])
+
+        return self
+
+    def blend_data(self, idxs=None):
+
+        if idxs is None:
+            idxs = list(range(len(self.datas)))
+
+        datax = deepcopy(self.datas[self.train_idx])
+        datax.verbose = False
+        datax.perlayer = True
+        n_nodes = len(datax.node_links)
+        datax.nidx2layer = {n: self.train_idx for n in range(n_nodes)}
+        datax.nidxconvert = {self.train_idx: {n:n for n in range(n_nodes)}}
+        for i in idxs:
+            if i != self.train_idx:
+                datax.node_labels += self.datas[i].node_labels
+                datax.node_links += self.datas[i].node_links
+                datax.nidx_train += [k + n_nodes for k in self.datas[i].nidx_train]
+                datax.nidx_pred += [k + n_nodes for k in self.datas[i].nidx_pred]
+                datax.nidx_exclude += [k + n_nodes for k in self.datas[i].nidx_exclude]
+                datax.links = list(set(datax.links) | set(self.datas[i].links))
+                datax.nidx2layer = {n: i for n in range(n_nodes, len(datax.node_links))}
+                datax.nidxconvert[i] = {n: n + n_nodes for n in range(len(self.datas[i].node_links))}
+                n_nodes = len(datax.node_links)
+
+        datax.link2lidx = {l:j for j,l in enumerate(datax.links)}
+        datax.map_data()
+
+        return datax
 
     def clf_all_predict(self, nidx_target, data=None):
 
@@ -1372,7 +1449,7 @@ class Data:
                 else:
                     self.link2freq[link] = 1
 
-        self.links += sorted(list(set(all_links) - set(self.links)))
+        self.links += sorted(set(all_links) - set(self.links))
         set_all_labels = set(all_labels)
         if self.labels:
             if self.lab_other and 'other' not in self.labels and has_other:
@@ -1556,7 +1633,7 @@ class Data:
             nidx_target = self.nidx_train.copy()
 
         if not self.link2featidx:
-            self.link2featidx = self.build_link2featidx(nidxs=nidx_target)
+            self.link2featidx = self.build_link2featidx(nidxs=nidx_target, spearman=False)
 
         # build link index to feature indices dictionary
         self.lidx2fidx = self.build_lidx2featidx()
@@ -1594,21 +1671,12 @@ class Data:
 
         return feat
 
-    def build_link2featidx(self, nidxs=None):
+    def build_link2featidx(self, nidxs=None, spearman=True):
 
         if self.verbose:
             print('Compiling features ...')
 
-        link2featidx = self._build_link2featidx(nidxs=nidxs)
-
-        while not link2featidx and self.spearman_cutoff <= 0.4:
-            print('  Could not compile features, try relaxing Spearman cutoff %.2f -> %.2f' % (self.spearman_cutoff, self.spearman_cutoff * 2))
-            self.spearman_cutoff *= 2
-            link2featidx = self._build_link2featidx(nidxs=nidxs)
-
-        if not link2featidx:
-            print('  Compiling features without Spearman correlation')
-            link2featidx = self._build_link2featidx(nidxs=nidxs, spearman=False)
+        link2featidx = self._build_link2featidx(nidxs=nidxs, spearman=spearman)
 
         if self.verbose:
             print('  Compiled %d features' % len(link2featidx))
@@ -1633,7 +1701,7 @@ class Data:
         # whether to do Spearman eval
         if spearman:
             # parallelize Spearman eval
-            r = self.eval_link(lidxs=lidxs)
+            r = self.eval_lidxs(lidxs=lidxs)
 
             # screen for valid features
             idx = 0
@@ -1642,36 +1710,74 @@ class Data:
                     link2featidx[self.links[lidxs[i]]] = idx
                     idx += 1
         else:
-            link2featidx = {l:i for i,l in enumerate(lidxs)}
+            link2featidx = {self.links[l]:i for i,l in enumerate(lidxs)}
 
         return link2featidx
 
-    def eval_link(self, lidxs):
+    def eval_lidxs(self, lidxs):
 
         n_lidxs = len(lidxs)
+        lidxs = np.array(lidxs)
         y_feats = np.transpose(self.gen_labels())
+        start = True
+        accepted = []
+        cutoff = self.spearman_cutoff
+        r = np.zeros([n_lidxs, self.n_labels], dtype=bool)
+        idx = np.ones(n_lidxs, dtype=bool)
 
-        # parallelize Spearman eval
-        with Pool(os.cpu_count(), maxtasksperchild=1) as p:
-            r = p.starmap(self._eval_link, zip(lidxs, repeat(y_feats, n_lidxs)),
-                          chunksize=int(np.ceil(n_lidxs / os.cpu_count())))
-            p.close()
-            p.join()
-        del p
+        while start or (not np.any(accepted) and cutoff <= 0.4):
 
-        return r
+            if not start and cutoff <= 0.4:
+                if self.verbose:
+                    print('  Insuffient features, try relaxing Spearman cutoff %.2f -> %.2f' % (cutoff, cutoff * 2))
+                cutoff *= 2
 
-    def _eval_link(self, lidx0, y):
+            # parallelize Spearman eval
+            with Pool(os.cpu_count(), maxtasksperchild=1) as p:
+                r[idx] = np.array(p.starmap(
+                    self._eval_lidx,
+                    zip(lidxs[idx],
+                        repeat(y_feats, n_lidxs),
+                        repeat(self.nidx2lidx, n_lidxs),
+                        repeat(self.nidx_train, n_lidxs),
+                        repeat(cutoff, n_lidxs)),
+                    chunksize=int(np.ceil(n_lidxs / os.cpu_count()))))
+                p.close()
+                p.join()
+            del p
 
-        x = [1 if lidx0 in self.nidx2lidx[n] else 0 for n in self.nidx_train]
+            # check feature coverage
+            coverage = np.sum(r, axis=0)
+            checked = np.any(r, axis=1)
+            if np.all(coverage):
+                accepted = checked
+            else:
+                idx[checked] = False
+                n_lidxs = int(np.sum(idx))
+                if not n_lidxs:
+                    accepted = checked
+
+            start = False
+
+        if not np.any(accepted):
+            if self.verbose:
+                print('  Compiling features without Spearman correlation')
+            accepted = np.ones(n_lidxs, dtype=bool)
+
+        return accepted
+
+    @staticmethod
+    def _eval_lidx(lidx0, yfeats, nidx2lidx, nidx_train, cutoff):
+
+        x = [1 if lidx0 in nidx2lidx[n] else 0 for n in nidx_train]
 
         if np.any(x):
-            pvals = np.array([spearmanr(x, yi)[1] if np.any(yi) else 1. for yi in y])
+            pvals = np.array([spearmanr(x, yi)[1] if np.any(yi) or np.all(yi) else 1. for yi in yfeats])
             pvals[np.isnan(pvals)] = 1.
         else:
-            return False
+            return np.zeros(np.shape(yfeats)[0], dtype=bool)
 
-        return np.any(pvals < self.spearman_cutoff)
+        return pvals < cutoff
 
     def build_lidx2featidx(self):
 
