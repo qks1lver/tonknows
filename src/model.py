@@ -78,7 +78,7 @@ class Model:
         # Model parameters
         self.kfold_cv = 3
         self.n_repeat = 10
-        self.auc_roc_avg = 'weighted'
+        self.metrics_avg = 'micro'
         self.maxinflidxratio = 0.01
         self.round_cutoff = None
         self.round_cutoff_history = []
@@ -89,7 +89,7 @@ class Model:
         self.min_imp_dec_history = [self.min_impurity_decrease]
         self.min_sample_leaf = 2
         self.min_leaf_history = [self.min_sample_leaf]
-        self.param_tune_scale = 0.2
+        self.param_tune_scale = 0.25
 
         # Initialize classifiers
         self.clf_net = self.gen_rfc()
@@ -957,10 +957,7 @@ class Model:
 
         for i, n in enumerate(nidx_target):
             nidx = []
-            try:
-                lidx = data.nidx2lidx[n]
-            except:
-                pdb.set_trace()
+            lidx = data.nidx2lidx[n]
             for l in lidx:
                 if data.lidx2ratio[l] <= self.maxinflidxratio:
                     nidx += list(data.lidx2nidx[l])
@@ -1237,13 +1234,13 @@ class Model:
                     y = np.transpose(y_t[col_keep])
                     y_pred = np.transpose(np.transpose(y_pred)[col_keep])
 
-                f1 = f1_score(y, self._round(y_pred), average=self.auc_roc_avg)
+                f1 = f1_score(y, self._round(y_pred), average=self.metrics_avg)
                 s = f1_score(y, self._round(y_pred), average=None)
                 f1_labs[col_keep] = s if sum(col_keep) > 1 else s[1]
-                aucroc = roc_auc_score(y, y_pred, average=self.auc_roc_avg)
+                aucroc = roc_auc_score(y, y_pred, average=self.metrics_avg)
                 aucroc_labs[col_keep] = roc_auc_score(y, y_pred, average=None)
-                precision = precision_score(y, self._round(y_pred), average=self.auc_roc_avg)
-                recall = recall_score(y, self._round(y_pred), average=self.auc_roc_avg)
+                precision = precision_score(y, self._round(y_pred), average=self.metrics_avg)
+                recall = recall_score(y, self._round(y_pred), average=self.metrics_avg)
                 if sum(col_keep) > 1:
                     precision_labs[col_keep] = precision_score(y, self._round(y_pred), average=None)
                     recall_labs[col_keep] = recall_score(y, self._round(y_pred), average=None)
@@ -1252,13 +1249,13 @@ class Model:
                     recall_labs[col_keep] = recall_score(y, self._round(y_pred))
             elif self.verbose:
                 print('*Cannot compute other metrics because no label in Truth has alternatives, only precision*')
-                precision = precision_score(y, self._round(y_pred), average=self.auc_roc_avg)
+                precision = precision_score(y, self._round(y_pred), average=self.metrics_avg)
                 precision_labs = precision_score(y, self._round(y_pred), average=None)
 
         elif len(y) == 1:
             if self.verbose:
                 print('*Cannot compute other metrics with %d samples, only precision*' % len(y))
-                precision = precision_score(y, self._round(y_pred), average=self.auc_roc_avg)
+                precision = precision_score(y, self._round(y_pred), average=self.metrics_avg)
                 precision_labs = precision_score(y, self._round(y_pred), average=None)
 
         result = {
@@ -1699,7 +1696,6 @@ class Data:
             nidxs = self.nidx_train
 
         link2featidx = dict()
-        y = self.gen_labels()
         lidxs = []
 
         # identify all links
