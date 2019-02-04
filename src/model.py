@@ -78,7 +78,7 @@ class Model:
         # Model parameters
         self.kfold_cv = 3
         self.n_repeat = 10
-        self.metrics_avg = 'micro'
+        self.metrics_avg = 'weighted'
         self.maxinflidxratio = 0.01
         self.round_cutoff = None
         self.round_cutoff_history = []

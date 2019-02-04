@@ -57,6 +57,7 @@ if __name__ == '__main__':
     parser.add_argument('--ed', dest='eval_data', default='', help='Evaluation data file')
     parser.add_argument('--pd', dest='pred_data', default='', help='Data to predict for')
     parser.add_argument('--out', dest='model_out', default='', help='Output model filename override')
+    parser.add_argument('--microavg', dest='microavg', action='store_true', help='Use micro average instead of weighted')
     parser.add_argument('--cvlayers', dest='cv_layers', action='store_true', help='CV over each layer')
     parser.add_argument('--multilayer', dest='multilayer', action='store_true', help='Train multilayer')
     parser.add_argument('--onlylabels', dest='only_labs', default='', help='Labels to use exclusively, comma separated')
@@ -114,6 +115,7 @@ if __name__ == '__main__':
                   aim=args.aim)
         m.maxlidxratio = args.maxlinkratio
         m.minlinkfreq = args.minlinkfreq
+        m.metrics_avg = 'micro' if args.microavg else 'weighted'
         m.masklayer = param['masklayer'] if args.param and 'masklayer' in param else []
         m.load_data()
 
@@ -184,6 +186,7 @@ if __name__ == '__main__':
             m_pkg, _ = open_pkl(args.model)
             m = Model(verbose=args.to_verbose)
             m.import_model(m_pkg)
+            m.metrics_avg = 'micro' if args.microavg else 'weighted'
             m.add_data(data=args.eval_data, build=False)
             m.datas[-1].mimic(data=m.datas[m.train_idx])
             m.datas[-1].build_data()
@@ -218,6 +221,7 @@ if __name__ == '__main__':
                 args.model = os.path.realpath(args.model) if args.model else _p_current_model_
 
                 m = Model(verbose=args.to_verbose).load_model(p_mod=args.model)
+                m.metrics_avg = 'micro' if args.microavg else 'weighted'
                 m.add_data(data=args.pred_data, mimic=m.datas[m.train_idx])
                 res = m.predict(data=m.datas[-1], write=not args.no_write)
                 res['model'] = args.model
