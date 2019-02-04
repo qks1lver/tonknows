@@ -336,7 +336,7 @@ class Model:
 
         if self.verbose:
             print('\n\n__  TRAINING STEP 1/2 \_______________________________')
-            print('  \ Train with %d-fold CV - %d time(s) /\n' % (self.kfold_cv, self.n_repeat))
+            print('  \ Train with reverse %d-fold CV - %d time(s) /\n' % (self.kfold_cv, self.n_repeat))
 
         for i_rep in range(self.n_repeat):
 
@@ -585,10 +585,10 @@ class Model:
             data.link2featidx = self.datas[self.train_idx].link2featidx
 
             # Check if data is multilayer
-            if data.layer2nidx:
-                self.train_multilayers = True
-            else:
+            if self.train_multilayers and not data.layer2nidx:
                 self.train_multilayers = False
+                if self.verbose:
+                    print('\n { Data is not multilayered, setting .train_multilayers=False }')
 
             # Predict
             predictions = self.clfs_predict(nidxs_target=data.nidx_pred, data=data)
@@ -655,7 +655,7 @@ class Model:
         if not data:
             data = self.datas[self.train_idx]
         train_idx0 = self.train_idx
-        eval_idx = len(self.datas) - 1
+        eval_idx = np.argwhere([data.p_data == d.p_data for d in self.datas]).flatten()[0]
 
         # combine training and testing data into layers of new Data object used to retrain clf-net during expansion
         self.datas.append(self.blend_data())
@@ -875,7 +875,6 @@ class Model:
         datax.verbose = False
         datax.perlayer = True
         n_nodes = len(datax.node_links)
-        datax.nidx2layer = {n: self.train_idx for n in range(n_nodes)}
         datax.nidxconvert = {self.train_idx: {n:n for n in range(n_nodes)}}
         for i in idxs:
             if i != self.train_idx:
@@ -885,7 +884,8 @@ class Model:
                 datax.nidx_pred += [k + n_nodes for k in self.datas[i].nidx_pred]
                 datax.nidx_exclude += [k + n_nodes for k in self.datas[i].nidx_exclude]
                 datax.links = list(set(datax.links) | set(self.datas[i].links))
-                datax.nidx2layer = {n: i for n in range(n_nodes, len(datax.node_links))}
+                n_layers = max(datax.nidx2layer)
+                datax.nidx2layer += [k+n_layers for k in self.datas[i].nidx2layer]
                 datax.nidxconvert[i] = {n: n + n_nodes for n in range(len(self.datas[i].node_links))}
                 n_nodes = len(datax.node_links)
 
@@ -895,6 +895,16 @@ class Model:
                         datax.link2freq[l] += self.datas[i].link2freq[l]
                     else:
                         datax.link2freq[l] = self.datas[i].link2freq[l]
+
+        # re-map layer2nidx
+        datax.layer2nidx = dict()
+        for n, l in enumerate(datax.nidx2layer):
+            if l in datax.layer2nidx:
+                datax.layer2nidx[l].append(n)
+            else:
+                datax.layer2nidx[l] = [n]
+        for l, n in datax.layer2nidx.items():
+            datax.layer2nidx[l] = set(n)
 
         datax.link2lidx = {l:j for j,l in enumerate(datax.links)}
         datax.map_data()
@@ -1125,8 +1135,8 @@ class Model:
 
     def _train_clf_inf(self, nidx_target):
 
-        r = minimize(self._opt_maxinflidxratio, np.array([0.05]), nidx_target, method='cobyla', jac='3-point')
-        self.maxinflidxratio = r.x[0]
+        r = minimize(self._opt_maxinflidxratio, np.array([0.05]), nidx_target, method='cobyla')
+        self.maxinflidxratio = r.x[0] if r.x[0] <= 1.0 else 1.0
         if self.verbose:
             print('  maxinflidxratio = %.4f' % self.maxinflidxratio)
 
@@ -1167,7 +1177,7 @@ class Model:
         if self.aim is not None:
             ypred = self._predict_proba(self.clf_opt, X=X)
             ybkg = self.bkg_predict(n_samples=len(X))
-            r = minimize(self._opt_round_cutoff, np.array([self.round_cutoff if self.round_cutoff is not None else 0.5]), (y, ypred, ybkg), method='cobyla', jac='3-point')
+            r = minimize(self._opt_round_cutoff, np.array([self.round_cutoff if self.round_cutoff is not None else 0.5]), (y, ypred, ybkg), method='cobyla')
             self.round_cutoff_history.append(r.x[0])
             self.round_cutoff = np.mean(self.round_cutoff_history)
             print('Optimal [%s] round_cutoff=%.4f' % (self.aim, self.round_cutoff))
