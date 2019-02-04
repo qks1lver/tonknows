@@ -242,7 +242,6 @@ class Model:
 
         if self.train_multilayers and self.datas[self.train_idx].layer2nidx:
 
-            self.n_repeat = 1
             self.labels = self.datas[self.train_idx].labels.copy()
 
             res_final = pd.DataFrame()
