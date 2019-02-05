@@ -1752,7 +1752,7 @@ class Data:
                     zip(lidxs[idx],
                         repeat(y_feats),
                         repeat(cutoff)),
-                    chunksize=int(np.ceil(np.sqrt(n_lidxs / os.cpu_count())))))
+                    chunksize=int(np.ceil(n_lidxs / os.cpu_count()))))
 
             # check feature coverage
             coverage = np.sum(r, axis=0)
