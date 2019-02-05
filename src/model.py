@@ -1660,15 +1660,13 @@ class Data:
             tmp.append(self._gen_feature(nidx=nidx))
         X = np.array(tmp)
         del tmp
-        '''
-        # No good way to make sure memory does not explode, curbing this capability for now
+        '''# No good way to make sure memory does not explode, curbing this capability for now
         with Pool(os.cpu_count(), maxtasksperchild=1) as p:
-            r = p.map(self._gen_feature, nidx_target, chunksize=int(np.ceil(len(nidx_target)/os.cpu_count())))
+            r = p.map(self._gen_feature, nidx_target, chunksize=int(np.ceil(np.sqrt(len(nidx_target)/os.cpu_count()))))
             p.close()
             p.join()
         del p
-        X = np.array(r)
-        '''
+        X = np.array(r)'''
 
         # identify predictables
         predictable = np.invert(np.all(X == 0, axis=1))
@@ -1748,15 +1746,15 @@ class Data:
                 cutoff *= 2
 
             # parallelize Spearman eval
-            with Pool(os.cpu_count(), maxtasksperchild=1) as p:
-                r[idx] = np.array(p.starmap(
+            with Pool(processes=os.cpu_count(), maxtasksperchild=1) as p:
+                r[idx] = np.array(p.imap(
                     self._eval_lidx,
                     zip(lidxs[idx],
-                        repeat(y_feats, n_lidxs),
-                        repeat(self.nidx2lidx, n_lidxs),
-                        repeat(self.nidx_train, n_lidxs),
-                        repeat(cutoff, n_lidxs)),
-                    chunksize=int(np.ceil(n_lidxs / os.cpu_count()))))
+                        repeat(y_feats),
+                        repeat(self.nidx2lidx),
+                        repeat(self.nidx_train),
+                        repeat(cutoff)),
+                    chunksize=int(np.ceil(np.sqrt(n_lidxs / os.cpu_count())))))
                 p.close()
                 p.join()
             del p
