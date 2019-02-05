@@ -884,7 +884,7 @@ class Model:
                 datax.nidx_pred += [k + n_nodes for k in self.datas[i].nidx_pred]
                 datax.nidx_exclude += [k + n_nodes for k in self.datas[i].nidx_exclude]
                 datax.links = list(set(datax.links) | set(self.datas[i].links))
-                n_layers = max(datax.nidx2layer)
+                n_layers = max(datax.nidx2layer) if datax.nidx2layer else 0
                 datax.nidx2layer += [k+n_layers for k in self.datas[i].nidx2layer]
                 datax.nidxconvert[i] = {n: n + n_nodes for n in range(len(self.datas[i].node_links))}
                 n_nodes = len(datax.node_links)
