@@ -1751,8 +1751,8 @@ class Data:
                     self._eval_lidx,
                     zip(lidxs[idx],
                         repeat(y_feats),
-                        repeat(self.nidx2lidx),
-                        repeat(self.nidx_train),
+                        repeat(self.nidx2lidx.copy()),
+                        repeat(self.nidx_train.copy()),
                         repeat(cutoff)),
                     chunksize=int(np.ceil(np.sqrt(n_lidxs / os.cpu_count())))))
                 p.close()
