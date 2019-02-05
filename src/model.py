@@ -1755,9 +1755,6 @@ class Data:
                         repeat(self.nidx_train.copy()),
                         repeat(cutoff)),
                     chunksize=int(np.ceil(np.sqrt(n_lidxs / os.cpu_count())))))
-                p.close()
-                p.join()
-            del p
 
             # check feature coverage
             coverage = np.sum(r, axis=0)
