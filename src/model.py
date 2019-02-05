@@ -1751,8 +1751,6 @@ class Data:
                     self._eval_lidx,
                     zip(lidxs[idx],
                         repeat(y_feats),
-                        repeat(self.nidx2lidx.copy()),
-                        repeat(self.nidx_train.copy()),
                         repeat(cutoff)),
                     chunksize=int(np.ceil(np.sqrt(n_lidxs / os.cpu_count())))))
 
@@ -1776,10 +1774,9 @@ class Data:
 
         return accepted
 
-    @staticmethod
-    def _eval_lidx(lidx0, yfeats, nidx2lidx, nidx_train, cutoff):
+    def _eval_lidx(self, lidx0, yfeats, cutoff):
 
-        x = [1 if lidx0 in nidx2lidx[n] else 0 for n in nidx_train]
+        x = [1 if lidx0 in self.nidx2lidx[n] else 0 for n in self.nidx_train]
 
         if np.any(x):
             pvals = np.array([spearmanr(x, yi)[1] if np.any(yi) or np.all(yi) else 1. for yi in yfeats])
