@@ -100,7 +100,7 @@ class Model:
             min_impurity_decrease=0.001,
             class_weight='balanced_subsample',
             warm_start=True,
-            n_jobs=os.cpu_count()
+            n_jobs=-1,
         )
         self.clf_opt_trained = False
 
@@ -119,7 +119,7 @@ class Model:
             min_impurity_decrease=self.min_impurity_decrease,
             min_samples_leaf=self.min_sample_leaf,
             class_weight='balanced_subsample',
-            n_jobs=os.cpu_count()
+            n_jobs=-1,
         )
 
         return clf
@@ -1655,18 +1655,18 @@ class Data:
         self.lidx2fidx = self.build_lidx2featidx()
 
         # feature generation
-        tmp = []
+        '''tmp = []
         for nidx in nidx_target:
             tmp.append(self._gen_feature(nidx=nidx))
         X = np.array(tmp)
-        del tmp
-        '''# No good way to make sure memory does not explode, curbing this capability for now
-        with Pool(os.cpu_count(), maxtasksperchild=1) as p:
-            r = p.map(self._gen_feature, nidx_target, chunksize=int(np.ceil(np.sqrt(len(nidx_target)/os.cpu_count()))))
-            p.close()
-            p.join()
-        del p
-        X = np.array(r)'''
+        del tmp'''
+        # No good way to make sure memory does not explode, curbing this capability for now
+        p = Pool(maxtasksperchild=1)
+        r = p.imap(self._gen_feature, nidx_target, chunksize=int(np.ceil(len(nidx_target)/os.cpu_count())))
+        X = np.array(list(r))
+        p.close()
+        p.terminate()
+        p.join()
 
         # identify predictables
         predictable = np.invert(np.all(X == 0, axis=1))
@@ -1746,13 +1746,11 @@ class Data:
                 cutoff *= 2
 
             # parallelize Spearman eval
-            with Pool(processes=os.cpu_count(), maxtasksperchild=1) as p:
-                r[idx] = np.array(p.imap(
-                    self._eval_lidx,
-                    zip(lidxs[idx],
-                        repeat(y_feats),
-                        repeat(cutoff)),
-                    chunksize=int(np.ceil(n_lidxs / os.cpu_count()))))
+            p = Pool(maxtasksperchild=1)
+            r[idx] = np.array(list(p.imap(self._eval_lidx, zip(lidxs[idx], repeat(y_feats), repeat(cutoff)), chunksize=int(np.ceil(n_lidxs / os.cpu_count())))))
+            p.close()
+            p.terminate()
+            p.join()
 
             # check feature coverage
             coverage = np.sum(r, axis=0)
@@ -1774,7 +1772,11 @@ class Data:
 
         return accepted
 
-    def _eval_lidx(self, lidx0, yfeats, cutoff):
+    def _eval_lidx(self, arg):
+
+        lidx0 = arg[0]
+        yfeats = arg[1]
+        cutoff = arg[2]
 
         x = [1 if lidx0 in self.nidx2lidx[n] else 0 for n in self.nidx_train]
 
