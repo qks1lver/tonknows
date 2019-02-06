@@ -1655,15 +1655,15 @@ class Data:
         self.lidx2fidx = self.build_lidx2featidx()
 
         # feature generation
-        '''tmp = []
+        tmp = []
         for nidx in nidx_target:
             tmp.append(self._gen_feature(nidx=nidx))
         X = np.array(tmp)
-        del tmp'''
+        del tmp
         # No good way to make sure memory does not explode, curbing this capability for now
-        with Pool(maxtasksperchild=1) as p:
+        '''with Pool(maxtasksperchild=1) as p:
             r = p.imap(self._gen_feature, nidx_target, chunksize=int(np.ceil(len(nidx_target)/os.cpu_count())))
-            X = np.array(list(r))
+            X = np.array(list(r))'''
 
         # identify predictables
         predictable = np.invert(np.all(X == 0, axis=1))
