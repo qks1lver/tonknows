@@ -11,11 +11,11 @@ MIT License. Copyright 2018 Jiun Y. Yen (jiunyyen@gmail.com)
 
 
 # Suppress warnings - warnings have been previously evaluated to be okay
-def warn(*args, **kwargs):
+'''def warn(*args, **kwargs):
     pass
 import warnings
 warnings.warn = warn
-warnings.filterwarnings("ignore",category =RuntimeWarning)
+warnings.filterwarnings("ignore",category =RuntimeWarning)'''
 
 # Imports
 import os
@@ -34,7 +34,6 @@ from src.iofunc import open_pkl, gen_id
 from multiprocessing import Pool
 from itertools import repeat
 from copy import deepcopy
-from gc import collect
 import pdb
 
 
@@ -99,7 +98,6 @@ class Model:
             n_estimators=0,
             max_features=None,
             min_impurity_decrease=0.001,
-            class_weight='balanced_subsample',
             warm_start=True,
             n_jobs=-1,
         )
@@ -715,10 +713,12 @@ class Model:
                 self.train_idx = blend_idx
 
                 # find expand features with evaluating data then set features in the blended data
-                if self.verbose:
+                '''if self.verbose:
                     print('\n[ Expanding ] Evaluating %d links' % len(new_links))
                 r = data.eval_lidxs([data.link2lidx[l] for l in new_links])
-                accepted_links = [new_links[i] for i, b in enumerate(r) if b]
+                accepted_links = [new_links[i] for i, b in enumerate(r) if b]'''
+                # because of memory and performance issue, by-passing link eval for now
+                accepted_links = new_links
                 if self.verbose:
                     print('[ Expanding ] Accepting %d links' % len(accepted_links))
                 n = len(self.datas[blend_idx].link2featidx)
@@ -1656,16 +1656,14 @@ class Data:
         self.lidx2fidx = self.build_lidx2featidx()
 
         # feature generation
-        '''tmp = []
+        tmp = []
         for nidx in nidx_target:
             tmp.append(self._gen_feature(nidx=nidx))
         X = np.array(tmp)
-        del tmp'''
         # No good way to make sure memory does not explode, curbing this capability for now
-        with Pool(maxtasksperchild=1) as p:
+        '''with Pool(maxtasksperchild=1) as p:
             r = p.imap(self._gen_feature, nidx_target, chunksize=int(np.ceil(np.sqrt(len(nidx_target)/os.cpu_count()))))
-            X = np.array(list(r))
-        collect()
+            X = np.array(list(r))'''
 
         # identify predictables
         predictable = np.invert(np.all(X == 0, axis=1))
@@ -1679,8 +1677,6 @@ class Data:
         for l, r in lidx2r.items():
             if l in self.lidx2fidx:
                 feat[self.lidx2fidx[l]] = r
-
-        collect()
 
         return feat
 
@@ -1744,13 +1740,12 @@ class Data:
                     print('  Insuffient features, try relaxing Spearman cutoff %.2f -> %.2f' % (cutoff, cutoff * 2))
                 cutoff *= 2
 
-            # r[idx] = map(self._eval_lidx, zip(lidxs[idx], repeat(y_feats), repeat(cutoff)))
+            r[idx] = map(self._eval_lidx, zip(lidxs[idx], repeat(y_feats), repeat(cutoff)))
             # parallelize Spearman eval
-            with Pool(maxtasksperchild=1) as p:
+            '''with Pool(maxtasksperchild=1) as p:
                 r[idx] = np.array(list(p.imap(self._eval_lidx,
                                               zip(lidxs[idx], repeat(y_feats), repeat(cutoff)),
-                                              chunksize=int(np.ceil(np.sqrt(n_lidxs / os.cpu_count()))))))
-            collect()
+                                              chunksize=int(np.ceil(np.sqrt(n_lidxs / os.cpu_count()))))))'''
 
             # check feature coverage
             coverage = np.sum(r, axis=0)
@@ -1785,8 +1780,6 @@ class Data:
             pvals[np.isnan(pvals)] = 1.
         else:
             return np.zeros(np.shape(yfeats)[0], dtype=bool)
-
-        collect()
 
         return pvals < cutoff
 
