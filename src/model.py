@@ -11,11 +11,11 @@ MIT License. Copyright 2018 Jiun Y. Yen (jiunyyen@gmail.com)
 
 
 # Suppress warnings - warnings have been previously evaluated to be okay
-'''def warn(*args, **kwargs):
+def warn(*args, **kwargs):
     pass
 import warnings
 warnings.warn = warn
-warnings.filterwarnings("ignore",category =RuntimeWarning)'''
+warnings.filterwarnings("ignore",category =RuntimeWarning)
 
 # Imports
 import os
@@ -83,7 +83,7 @@ class Model:
         self.round_cutoff = None
         self.round_cutoff_history = []
         self.aim = aim
-        self.n_estimators = 200
+        self.n_estimators = 150
         self.n_est_history = [self.n_estimators]
         self.min_impurity_decrease = 0.00001
         self.min_imp_dec_history = [self.min_impurity_decrease]
@@ -696,11 +696,11 @@ class Model:
                         y_fill = self._y_merge(predictions=predictions, i=i_missing)
                         filling_coverage = self._calc_coverage(y_fill) * len(y_fill) / len(i_missing)
                         predictions['yopt'][i_missing] = y_fill
+                        predictions['fill'] = filling_coverage
 
                     if self.verbose:
                         coverage1 = self._calc_coverage(predictions['yopt'])
                         print('\n[ clf-opt ]\n  no-fill coverage: {:.1%}\n  filling: {:.1%}\n  filled coverage: {:.1%}\n'.format(coverage0, filling_coverage, coverage1))
-                    predictions['fill'] = filling_coverage
 
             # Show scores
             self._print_eval(predictions=predictions, to_eval=to_eval)
@@ -713,12 +713,10 @@ class Model:
                 self.train_idx = blend_idx
 
                 # find expand features with evaluating data then set features in the blended data
-                '''if self.verbose:
+                if self.verbose:
                     print('\n[ Expanding ] Evaluating %d links' % len(new_links))
                 r = data.eval_lidxs([data.link2lidx[l] for l in new_links])
-                accepted_links = [new_links[i] for i, b in enumerate(r) if b]'''
-                # because of memory and performance issue, by-passing link eval for now
-                accepted_links = new_links
+                accepted_links = [new_links[i] for i, b in enumerate(r) if b]
                 if self.verbose:
                     print('[ Expanding ] Accepting %d links' % len(accepted_links))
                 n = len(self.datas[blend_idx].link2featidx)
@@ -1656,14 +1654,14 @@ class Data:
         self.lidx2fidx = self.build_lidx2featidx()
 
         # feature generation
-        tmp = []
+        '''tmp = []
         for nidx in nidx_target:
             tmp.append(self._gen_feature(nidx=nidx))
-        X = np.array(tmp)
+        X = np.array(tmp)'''
         # No good way to make sure memory does not explode, curbing this capability for now
-        '''with Pool(maxtasksperchild=1) as p:
+        with Pool(maxtasksperchild=1) as p:
             r = p.imap(self._gen_feature, nidx_target, chunksize=int(np.ceil(np.sqrt(len(nidx_target)/os.cpu_count()))))
-            X = np.array(list(r))'''
+            X = np.array(list(r))
 
         # identify predictables
         predictable = np.invert(np.all(X == 0, axis=1))
@@ -1740,12 +1738,12 @@ class Data:
                     print('  Insuffient features, try relaxing Spearman cutoff %.2f -> %.2f' % (cutoff, cutoff * 2))
                 cutoff *= 2
 
-            r[idx] = map(self._eval_lidx, zip(lidxs[idx], repeat(y_feats), repeat(cutoff)))
+            #r[idx] = map(self._eval_lidx, zip(lidxs[idx], repeat(y_feats), repeat(cutoff)))
             # parallelize Spearman eval
-            '''with Pool(maxtasksperchild=1) as p:
+            with Pool(maxtasksperchild=1) as p:
                 r[idx] = np.array(list(p.imap(self._eval_lidx,
                                               zip(lidxs[idx], repeat(y_feats), repeat(cutoff)),
-                                              chunksize=int(np.ceil(np.sqrt(n_lidxs / os.cpu_count()))))))'''
+                                              chunksize=int(np.ceil(np.sqrt(n_lidxs / os.cpu_count()))))))
 
             # check feature coverage
             coverage = np.sum(r, axis=0)
