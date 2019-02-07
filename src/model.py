@@ -83,7 +83,7 @@ class Model:
         self.round_cutoff = None
         self.round_cutoff_history = []
         self.aim = aim
-        self.n_estimators = 150
+        self.n_estimators = 100
         self.n_est_history = [self.n_estimators]
         self.min_impurity_decrease = 0.00001
         self.min_imp_dec_history = [self.min_impurity_decrease]
@@ -99,7 +99,7 @@ class Model:
             max_features=None,
             min_impurity_decrease=0.001,
             warm_start=True,
-            n_jobs=-1,
+            n_jobs=os.cpu_count(),
         )
         self.clf_opt_trained = False
 
@@ -118,7 +118,7 @@ class Model:
             min_impurity_decrease=self.min_impurity_decrease,
             min_samples_leaf=self.min_sample_leaf,
             class_weight='balanced_subsample',
-            n_jobs=-1,
+            n_jobs=os.cpu_count(),
         )
 
         return clf
@@ -362,7 +362,7 @@ class Model:
                     print(rep_str + ' - CV %d/%d ---\_____\n' % (j_fold + 1, self.kfold_cv))
 
                 # reset training status
-                self.clf_opt_trained = False
+                # self.clf_opt_trained = False
 
                 # set clf-net parameters
                 self.n_estimators = param[0][j_fold]
