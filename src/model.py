@@ -80,15 +80,16 @@ class Model:
         self.n_repeat = 10
         self.metrics_avg = 'weighted'
         self.maxinflidxratio = 0.01
+        self.inflidxratio_history = []
         self.round_cutoff = None
         self.round_cutoff_history = []
         self.aim = aim
         self.n_estimators = 100
-        self.n_est_history = [self.n_estimators]
+        self.n_est_history = []
         self.min_impurity_decrease = 0.00001
-        self.min_imp_dec_history = [self.min_impurity_decrease]
+        self.min_imp_dec_history = []
         self.min_sample_leaf = 2
-        self.min_leaf_history = [self.min_sample_leaf]
+        self.min_leaf_history = []
         self.param_tune_scale = 0.25
 
         # Initialize classifiers
@@ -241,6 +242,8 @@ class Model:
 
         if self.train_multilayers and self.datas[self.train_idx].layer2nidx:
 
+            t0 = time()
+
             self.labels = self.datas[self.train_idx].labels.copy()
 
             res_final = pd.DataFrame()
@@ -284,6 +287,8 @@ class Model:
             res = self.train()
             res[self.columns['layers']] = 'all'
             res_final = res_final.append(res, ignore_index=True)
+
+            print('\n [ CV layers ] Total training time: %.1f minutes\n' % ((time()-t0)/60))
 
             return res_final
 
@@ -455,9 +460,9 @@ class Model:
         self.min_imp_dec_history.append(param[1][imax])
         self.min_leaf_history.append(param[2][imax])
 
-        self.n_estimators = np.mean(self.n_est_history)
-        self.min_impurity_decrease = np.mean(self.min_imp_dec_history)
-        self.min_sample_leaf = np.mean(self.min_leaf_history)
+        self.n_estimators = np.median(self.n_est_history)
+        self.min_impurity_decrease = np.median(self.min_imp_dec_history)
+        self.min_sample_leaf = np.median(self.min_leaf_history)
 
         self.clf_net = self.gen_rfc()
 
@@ -1134,24 +1139,31 @@ class Model:
 
     def _train_clf_inf(self, nidx_target):
 
-        r = minimize(self._opt_maxinflidxratio, np.array([0.05]), nidx_target, method='cobyla')
-        self.maxinflidxratio = r.x[0] if r.x[0] <= 1.0 else 1.0
+        y0 = self.datas[self.train_idx].gen_labels(nidxs=nidx_target)
+        x = minimize(self._opt_maxinflidxratio,
+                     np.array([self.maxinflidxratio]),
+                     (nidx_target, y0),
+                     method='cobyla',
+                     options={'rhobeg': 0.1}).x[0]
+        self.inflidxratio_history.append(x)
+        self.maxinflidxratio = np.median(self.inflidxratio_history)
         if self.verbose:
             print('  maxinflidxratio = %.4f' % self.maxinflidxratio)
 
         return
 
-    def _opt_maxinflidxratio(self, x, nidx_target):
+    def _opt_maxinflidxratio(self, x, nidx_target, y0):
 
         self.maxinflidxratio = x
 
         y, _ = self.clf_inf_predict(nidx_target=nidx_target)
-        y0 = self.datas[self.train_idx].gen_labels(nidxs=nidx_target)
 
         r = self.scores(y0, y)
-        c = self._calc_coverage(y)
 
-        score = -r['aucroc'] * r['f1'] * c
+        if self.aim:
+            score = -r['aucroc'] * r[self.aim.replace('hard', '')]
+        else:
+            score = -r['aucroc'] * r['f1']
 
         return score
 
@@ -1176,9 +1188,13 @@ class Model:
         if self.aim is not None:
             ypred = self._predict_proba(self.clf_opt, X=X)
             ybkg = self.bkg_predict(n_samples=len(X))
-            r = minimize(self._opt_round_cutoff, np.array([self.round_cutoff if self.round_cutoff is not None else 0.5]), (y, ypred, ybkg), method='cobyla')
-            self.round_cutoff_history.append(r.x[0])
-            self.round_cutoff = np.mean(self.round_cutoff_history)
+            x = minimize(self._opt_round_cutoff,
+                         np.array([self.round_cutoff if self.round_cutoff is not None else 0.5]),
+                         (y, ypred, ybkg),
+                         method='cobyla',
+                         options={'rhobeg': 0.1}).x[0]
+            self.round_cutoff_history.append(x)
+            self.round_cutoff = np.median(self.round_cutoff_history)
             print('Optimal [%s] round_cutoff=%.4f' % (self.aim, self.round_cutoff))
 
         return
@@ -1660,7 +1676,7 @@ class Data:
         X = np.array(tmp)'''
         # No good way to make sure memory does not explode, curbing this capability for now
         with Pool(maxtasksperchild=1) as p:
-            r = p.imap(self._gen_feature, nidx_target, chunksize=int(np.ceil(np.sqrt(len(nidx_target)/os.cpu_count()))))
+            r = p.imap(self._gen_feature, nidx_target, chunksize=int(np.ceil(len(nidx_target)/os.cpu_count())))
             X = np.array(list(r))
 
         # identify predictables
@@ -1743,7 +1759,7 @@ class Data:
             with Pool(maxtasksperchild=1) as p:
                 r[idx] = np.array(list(p.imap(self._eval_lidx,
                                               zip(lidxs[idx], repeat(y_feats), repeat(cutoff)),
-                                              chunksize=int(np.ceil(np.sqrt(n_lidxs / os.cpu_count()))))))
+                                              chunksize=int(np.ceil(n_lidxs / os.cpu_count())))))
 
             # check feature coverage
             coverage = np.sum(r, axis=0)
