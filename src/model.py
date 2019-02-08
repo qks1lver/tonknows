@@ -369,9 +369,6 @@ class Model:
                 if self.verbose:
                     print(rep_str + ' - CV %d/%d ---\_____\n' % (j_fold + 1, self.kfold_cv))
 
-                # reset training status
-                # self.clf_opt_trained = False
-
                 # set clf-net parameters
                 self.n_estimators = param[0][j_fold]
                 self.min_impurity_decrease = param[1][j_fold]
@@ -891,11 +888,6 @@ class Model:
         if idxs is None:
             idxs = list(range(len(self.datas)))
 
-        '''datax = deepcopy(self.datas[self.train_idx])
-        datax.verbose = False
-        datax.perlayer = True
-        n_nodes = len(datax.node_links)
-        datax.nidxconvert = {self.train_idx: {n:n for n in range(n_nodes)}}'''
         datax = Data(verbose=False)
         datax.perlayer = True
         datax.mimic(self.datas[self.train_idx])
@@ -903,7 +895,7 @@ class Model:
         n_nodes = 0
         datax.nidxconvert = dict()
         for i in idxs:
-            #if i != self.train_idx:
+            datax.nodes += self.datas[i].nodes if self.datas[i] else [str(j) for j in range(len(self.datas[i].node_labels))]
             datax.node_labels += self.datas[i].node_labels
             datax.node_links += self.datas[i].node_links
             datax.nidx_train += [k + n_nodes for k in self.datas[i].nidx_train]
@@ -1689,11 +1681,7 @@ class Data:
         self.lidx2fidx = self.build_lidx2featidx()
 
         # feature generation
-        '''tmp = []
-        for nidx in nidx_target:
-            tmp.append(self._gen_feature(nidx=nidx))
-        X = np.array(tmp)'''
-        # No good way to make sure memory does not explode, curbing this capability for now
+        # **Note** this part is very memory expensive, allocated as much as possible
         with Pool(maxtasksperchild=1) as p:
             r = p.imap(self._gen_feature, nidx_target, chunksize=int(np.ceil(len(nidx_target)/os.cpu_count())))
             X = np.array(list(r))
@@ -1773,7 +1761,6 @@ class Data:
                     print('  Insuffient features, try relaxing Spearman cutoff %.2f -> %.2f' % (cutoff, cutoff * 2))
                 cutoff *= 2
 
-            #r[idx] = map(self._eval_lidx, zip(lidxs[idx], repeat(y_feats), repeat(cutoff)))
             # parallelize Spearman eval
             with Pool(maxtasksperchild=1) as p:
                 r[idx] = np.array(list(p.imap(self._eval_lidx,
