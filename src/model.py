@@ -676,6 +676,8 @@ class Model:
         eval_idx = np.argwhere([data.p_data == d.p_data for d in self.datas]).flatten()[0]
 
         # combine training and testing data into layers of new Data object used to retrain clf-net during expansion
+        # The training and test data will be in different layers
+        # This is so training data is not lost during expansive training iterations
         self.datas.append(self.blend_data(idxs=data_idxs))
         blend_idx = len(self.datas) - 1
 
@@ -889,30 +891,35 @@ class Model:
         if idxs is None:
             idxs = list(range(len(self.datas)))
 
-        datax = deepcopy(self.datas[self.train_idx])
+        '''datax = deepcopy(self.datas[self.train_idx])
         datax.verbose = False
         datax.perlayer = True
         n_nodes = len(datax.node_links)
-        datax.nidxconvert = {self.train_idx: {n:n for n in range(n_nodes)}}
+        datax.nidxconvert = {self.train_idx: {n:n for n in range(n_nodes)}}'''
+        datax = Data(verbose=False)
+        datax.perlayer = True
+        datax.mimic(self.datas[self.train_idx])
+        datax.link2featidx = self.datas[self.train_idx].link2featidx.copy()
+        n_nodes = 0
+        datax.nidxconvert = dict()
         for i in idxs:
-            if i != self.train_idx:
-                datax.node_labels += self.datas[i].node_labels
-                datax.node_links += self.datas[i].node_links
-                datax.nidx_train += [k + n_nodes for k in self.datas[i].nidx_train]
-                datax.nidx_pred += [k + n_nodes for k in self.datas[i].nidx_pred]
-                datax.nidx_exclude += [k + n_nodes for k in self.datas[i].nidx_exclude]
-                datax.links = list(set(datax.links) | set(self.datas[i].links))
-                n_layers = max(datax.nidx2layer) if datax.nidx2layer else 0
-                datax.nidx2layer += [k+n_layers for k in self.datas[i].nidx2layer]
-                datax.nidxconvert[i] = {n: n + n_nodes for n in range(len(self.datas[i].node_links))}
-                n_nodes = len(datax.node_links)
+            #if i != self.train_idx:
+            datax.node_labels += self.datas[i].node_labels
+            datax.node_links += self.datas[i].node_links
+            datax.nidx_train += [k + n_nodes for k in self.datas[i].nidx_train]
+            datax.nidx_pred += [k + n_nodes for k in self.datas[i].nidx_pred]
+            datax.nidx_exclude += [k + n_nodes for k in self.datas[i].nidx_exclude]
+            datax.links = list(set(datax.links) | set(self.datas[i].links))
+            datax.nidx2layer += [k + '-%d'%i for k in self.datas[i].nidx2layer] if self.datas[i].nidx2layer else [str(i) for _ in range(len(self.datas[i].node_labels))]
+            datax.nidxconvert[i] = {n: n + n_nodes for n in range(len(self.datas[i].node_links))}
+            n_nodes = len(datax.node_links)
 
-                # update link frequency
-                for l in self.datas[i].links:
-                    if l in datax.link2freq:
-                        datax.link2freq[l] += self.datas[i].link2freq[l]
-                    else:
-                        datax.link2freq[l] = self.datas[i].link2freq[l]
+            # update link frequency
+            for l in self.datas[i].links:
+                if l in datax.link2freq:
+                    datax.link2freq[l] += self.datas[i].link2freq[l]
+                else:
+                    datax.link2freq[l] = self.datas[i].link2freq[l]
 
         # re-map layer2nidx
         datax.layer2nidx = dict()
@@ -1404,7 +1411,6 @@ class Data:
 
     def mimic(self, data):
 
-        self.exclude_links = data.exclude_links.copy()
         self.labels = data.labels.copy()
         self.lab_other = data.lab_other
         self.k_neighbors = data.k_neighbors
@@ -1412,7 +1418,6 @@ class Data:
         self.n_labels = data.n_labels
         self.maxlidxratio = data.maxlidxratio
         self.minlinkfreq = data.minlinkfreq
-        self.masklayer = data.masklayer
         self.spearman_cutoff = data.spearman_cutoff
 
         return self
@@ -1835,7 +1840,8 @@ class Data:
         for nidx in nidxs:
             for lidx in self.nidx2lidx[nidx]:
                 if lidx not in lidx2r and self.lidx2ratio[lidx] <= self.maxlidxratio:
-                    lidx2r[lidx] = i
+                    # radius is assigned here
+                    lidx2r[lidx] = i+1
                     if i < self.k_neighbors:
                         if self.perlayer:
                             newnidxs += list(self.lidx2nidx[lidx] & self.layer2nidx[self.nidx2layer[nidx]] - oldnidxs)
