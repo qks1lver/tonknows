@@ -281,10 +281,7 @@ class Model:
             os.remove(self.p_datas[self.train_idx])
             os.remove(self.p_datas[test_idx])
 
-            # Unload the train/test datasets
-            self.datas = []
-
-            # Reload original data
+            # Unload all loaded datasets and reload original data
             self.load_data(data=p_train0)
             self.train_idx = 0
 
