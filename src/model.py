@@ -393,7 +393,7 @@ class Model:
                 # Train clfs
                 if self.verbose:
                     print('\n> Training base classifiers ...')
-                self._train_clfs(train_nidx=cv_train_nidxs)
+                self._train_clfs(train_nidxs=cv_train_nidxs)
 
                 # Evaluate train with cv_train data
                 if self.verbose:
@@ -442,7 +442,7 @@ class Model:
 
         # Evaluate final clf-opt with all data
         print('\n> Evaluating final classifier ...')
-        self.clfs_predict(nidxs_target=self.datas[self.train_idx].nidx_train, data=self.datas[self.train_idx], to_eval=True, data_idxs=[self.train_idx])
+        self.clfs_predict(nidxs_target=self.datas[self.train_idx].nidx_train, to_eval=True, data_idxs=[self.train_idx])
         print('** Because this is evaluating with the training data, classifier performances should be very high.')
 
         # Assign model ID - this is here so that if retrained, it would be known that it is not the same model anymore
@@ -761,7 +761,7 @@ class Model:
                 # retrain model with predictions and features from this expansion
                 if self.verbose:
                     print('[ Expanding ] Training on expanded network')
-                self._train_clfs(train_nidx=nidxs_conv)
+                self._train_clfs(train_nidxs=nidxs_conv)
 
                 # reset training data index and labels
                 self.train_idx = train_idx0
@@ -1121,29 +1121,29 @@ class Model:
 
         return np.concatenate([predictions['yinf'], predictions['ymatch'], predictions['ynet']], axis=1)
 
-    def _train_clfs(self, train_nidx=None):
+    def _train_clfs(self, train_nidxs=None):
 
         """
         Training the MATCH and NET classifiers with specified samples of the training data. Samples are specified by
         their node indices in the loaded .train_data Data object. If train_nidx is not specified, then all the
         trainable nodes in the .train_data Data object will be used.
 
-        :param train_nidx: Optional, a list of integers that specified the node indices.
+        :param train_nidxs: Optional, a list of integers that specified the node indices.
         :return:
         """
 
-        if train_nidx is None:
-            train_nidx = self.datas[self.train_idx].nidx_train
+        if train_nidxs is None:
+            train_nidxs = self.datas[self.train_idx].nidx_train
 
-        X_train, y_train, _ = self.datas[self.train_idx].gen_features(nidx_target=train_nidx, perlayer=self.train_multilayers)
+        X_train, y_train, _ = self.datas[self.train_idx].gen_features(nidx_target=train_nidxs, perlayer=self.train_multilayers)
 
         if self.verbose:
             print('Train clf-inf: optimizing maxinflidxratio ...')
-        self._train_clf_inf(nidx_target=train_nidx)
+        self._train_clf_inf(nidx_target=train_nidxs)
 
         if self.verbose:
             print('Train clf-match: building unique link table ...')
-        self.unique_lidx2labels = self.datas[self.train_idx].gen_match_table(nidx_target=train_nidx)
+        self.unique_lidx2labels = self.datas[self.train_idx].gen_match_table(nidx_target=train_nidxs)
 
         if self.verbose:
             print('Train clf-net: fitting random-forest classifier ...')
