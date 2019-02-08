@@ -273,7 +273,7 @@ class Model:
 
                 # Eval
                 self.train_multilayers = False
-                res = self.eval(data=self.datas[test_idx])
+                res = self.eval(data=self.datas[test_idx], eval_idx=[test_idx])
                 res[self.columns['layers']] = layer
                 res_final = res_final.append(res, ignore_index=True)
 
@@ -281,9 +281,15 @@ class Model:
             os.remove(self.p_datas[self.train_idx])
             os.remove(self.p_datas[test_idx])
 
+            # Unload the train/test datasets
+            self.datas = []
+
+            # Reload original data
+            self.load_data(data=p_train0)
+            self.train_idx = 0
+
             # Final training with all data
             self.train_multilayers = True
-            self.load_data(data=p_train0)
             res = self.train()
             res[self.columns['layers']] = 'all'
             res_final = res_final.append(res, ignore_index=True)
@@ -395,12 +401,12 @@ class Model:
                 # Evaluate train with cv_train data
                 if self.verbose:
                     print('\n> Evaluating base classifiers with cv_train partition ...')
-                self.clfs_predict(nidxs_target=cv_train_nidxs, data=self.datas[self.train_idx], to_eval=True)
+                self.clfs_predict(nidxs_target=cv_train_nidxs, data=self.datas[self.train_idx], to_eval=True, data_idxs=[self.train_idx])
 
                 # Evaluate pre-optimization with opt_train data
                 if self.verbose:
                     print('\n> Evaluating base classifiers with cv_eval partition ...')
-                cv_res = self.clfs_predict(nidxs_target=opt_train_nidxs, data=self.datas[self.train_idx], to_eval=True, nidxs_train=cv_train_nidxs)
+                cv_res = self.clfs_predict(nidxs_target=opt_train_nidxs, data=self.datas[self.train_idx], to_eval=True, nidxs_train=cv_train_nidxs, data_idxs=[self.train_idx])
 
                 # Train clf-opt with opt_train partition results
                 if self.verbose:
@@ -410,7 +416,7 @@ class Model:
                 # Evaluate clf-opt with opt_eval partition
                 if self.verbose:
                     print('\n> Evaluating optimized classifier with opt_test partition ...')
-                opt_res = self.clfs_predict(nidxs_target=opt_eval_nidxs, data=self.datas[self.train_idx], to_eval=True, nidxs_train=cv_train_nidxs)
+                opt_res = self.clfs_predict(nidxs_target=opt_eval_nidxs, data=self.datas[self.train_idx], to_eval=True, nidxs_train=cv_train_nidxs, data_idxs=[self.train_idx])
                 opt_results = opt_results.append(opt_res, ignore_index=True)
 
                 # Append score to optimize clf-net parameter
@@ -439,7 +445,7 @@ class Model:
 
         # Evaluate final clf-opt with all data
         print('\n> Evaluating final classifier ...')
-        self.clfs_predict(nidxs_target=self.datas[self.train_idx].nidx_train, data=self.datas[self.train_idx], to_eval=True)
+        self.clfs_predict(nidxs_target=self.datas[self.train_idx].nidx_train, data=self.datas[self.train_idx], to_eval=True, data_idxs=[self.train_idx])
         print('** Because this is evaluating with the training data, classifier performances should be very high.')
 
         # Assign model ID - this is here so that if retrained, it would be known that it is not the same model anymore
@@ -492,13 +498,14 @@ class Model:
 
         return
 
-    def eval(self, data=None):
+    def eval(self, data=None, eval_idx=None):
 
         """
         Evaluate any samples in a Data object that has label information.
 
         :param data: Optional. A Data class object. Must be loaded with data by running Data.build(). If None, then
         the first non-train data will be used. If nothnig is in that, then no evaluation.
+        :param eval_idx: index of loaded evaluating dataset
         :return: A dictionary containing predictions from all the base classifiers and the final model
         """
 
@@ -507,6 +514,9 @@ class Model:
                 if i != self.train_idx:
                     data = self.datas[i]
                     break
+
+        if eval_idx is None:
+            eval_idx = [len(self.datas) - 1]
 
         predictions = None
         if data.p_data and os.path.isfile(data.p_data):
@@ -525,7 +535,8 @@ class Model:
             # Transfer feature list from training data
             data.link2featidx = self.datas[self.train_idx].link2featidx
 
-            predictions = self.clfs_predict(nidxs_target=data.nidx_train, data=data, to_eval=True)
+            data_idxs = [self.train_idx] + eval_idx
+            predictions = self.clfs_predict(nidxs_target=data.nidx_train, data=data, to_eval=True, data_idxs=data_idxs)
 
         else:
             print('\n { No evaluation dataset }\n')
@@ -545,7 +556,7 @@ class Model:
 
         return results
 
-    def predict(self, data=None, write=True, p_out=''):
+    def predict(self, data=None, write=True, p_out='', pred_idx=None):
 
         """
         The is predicting with a prediction data or the specified Data object. If there are nodes with label
@@ -557,6 +568,7 @@ class Model:
         data is used
         :param p_out: Optional, String that specifies the file path of the report to be generated
         :param write: Optional, whether to write predictions to file
+        :param pred_idx: Optional, index of the loaded predicting dataset
         :return: Two variables: a dictionary containing predictions from all the base classifiers and the final model,
         and the String of the report file path
         """
@@ -566,6 +578,9 @@ class Model:
                 if i != self.train_idx:
                     data = self.datas[i]
                     break
+
+        if pred_idx is None:
+            pred_idx = [len(self.datas) - 1]
 
         result = {'p_data': data.p_data, 'p_out':'', 'pred':None, 'eval':None}
         if data.p_data and os.path.isfile(data.p_data):
@@ -595,7 +610,8 @@ class Model:
                     print('\n { Data is not multilayered, setting .train_multilayers=False }')
 
             # Predict
-            predictions = self.clfs_predict(nidxs_target=data.nidx_pred, data=data)
+            data_idxs = [self.train_idx] + pred_idx
+            predictions = self.clfs_predict(nidxs_target=data.nidx_pred, data=data, data_idxs=data_idxs)
             result['pred'] = predictions
 
             # Write results
@@ -634,7 +650,7 @@ class Model:
 
         return p_out
 
-    def clfs_predict(self, nidxs_target, data=None, to_eval=False, fill=True, nidxs_train=None):
+    def clfs_predict(self, nidxs_target, data=None, to_eval=False, fill=True, nidxs_train=None, data_idxs=None):
 
         """
         This runs predictions with all base classifiers and the final model for the nodes specified through their
@@ -653,6 +669,7 @@ class Model:
         will be given, since the base classifiers may not be able to predict for the sample or may not predict any
         labels for the sample as well.
         :param nidxs_train: nodes used in training
+        :param data_idxs: indices of data to blend
         :return: A dictionary containing predictions from all the base classifiers and the final model
         """
 
@@ -662,7 +679,7 @@ class Model:
         eval_idx = np.argwhere([data.p_data == d.p_data for d in self.datas]).flatten()[0]
 
         # combine training and testing data into layers of new Data object used to retrain clf-net during expansion
-        self.datas.append(self.blend_data())
+        self.datas.append(self.blend_data(idxs=data_idxs))
         blend_idx = len(self.datas) - 1
 
         # Compute expansion path
