@@ -629,16 +629,16 @@ class Model:
             _ = f.write('%s\tknown_labels\tpredictions\tmerged\n' % data.columns['nodes'])
 
             # Write predictions
-            for n, yopt in zip(predictions['nidx'], predictions['yopt']):
+            for n, yopt in zip(predictions['nodes'], predictions['yopt']):
                 str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
-                _ = f.write('%s\t\t%s\t%s\n' % (data.nodes[n][0], str_opt, str_opt))
+                _ = f.write('%s\t\t%s\t%s\n' % (n, str_opt, str_opt))
 
             # Write known labels
             if evaluations:
-                for n, yopt, ytruth in zip(evaluations['nidx'], evaluations['yopt'], evaluations['ytruth']):
+                for n, yopt, ytruth in zip(evaluations['nodes'], evaluations['yopt'], evaluations['ytruth']):
                     str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
                     str_truth = '/'.join(labels[np.array(ytruth, dtype=bool)])
-                    _ = f.write('%s\t%s\t%s\t%s\n' % (data.nodes[n][0], str_truth, str_opt, str_truth))
+                    _ = f.write('%s\t%s\t%s\t%s\n' % (n, str_truth, str_opt, str_truth))
 
         print('Results written to %s\n' % p_out)
 
@@ -952,7 +952,7 @@ class Model:
 
         # Group predictions
         predictions = {
-            'nidx': nidx_target,
+            'nodes': ['/'.join(data.nodes[i]) for i in nidx_target] if data.nodes else [str(i) for i in nidx_target],
             'inf': inf_predictable,
             'match': match_predictable,
             'net': net_predictable,
