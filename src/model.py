@@ -94,7 +94,7 @@ class Model:
 
         # Initialize classifiers
         self.clf_net = self.gen_rfc()
-        self.unique_lidx2labels = None
+        self.unique_link2labels = None
         self.clf_opt = RandomForestClassifier(
             n_estimators=0,
             max_features=None,
@@ -395,12 +395,12 @@ class Model:
                 # Evaluate train with cv_train data
                 if self.verbose:
                     print('\n> Evaluating base classifiers with cv_train partition ...')
-                self.clfs_predict(nidxs_target=cv_train_nidxs, data=self.datas[self.train_idx], to_eval=True, data_idxs=[self.train_idx])
+                self.clfs_predict(nidxs_target=cv_train_nidxs, data=self.datas[self.train_idx], to_eval=True, eval_idx=self.train_idx)
 
                 # Evaluate pre-optimization with opt_train data
                 if self.verbose:
                     print('\n> Evaluating base classifiers with cv_eval partition ...')
-                cv_res = self.clfs_predict(nidxs_target=opt_train_nidxs, data=self.datas[self.train_idx], to_eval=True, nidxs_train=cv_train_nidxs, data_idxs=[self.train_idx])
+                cv_res = self.clfs_predict(nidxs_target=opt_train_nidxs, data=self.datas[self.train_idx], to_eval=True, nidxs_train=cv_train_nidxs, eval_idx=self.train_idx)
 
                 # Train clf-opt with opt_train partition results
                 if self.verbose:
@@ -410,7 +410,7 @@ class Model:
                 # Evaluate clf-opt with opt_eval partition
                 if self.verbose:
                     print('\n> Evaluating optimized classifier with opt_test partition ...')
-                opt_res = self.clfs_predict(nidxs_target=opt_eval_nidxs, data=self.datas[self.train_idx], to_eval=True, nidxs_train=cv_train_nidxs, data_idxs=[self.train_idx])
+                opt_res = self.clfs_predict(nidxs_target=opt_eval_nidxs, data=self.datas[self.train_idx], to_eval=True, nidxs_train=cv_train_nidxs, eval_idx=self.train_idx)
                 opt_results = opt_results.append(opt_res, ignore_index=True)
 
                 # Append score to optimize clf-net parameter
@@ -439,7 +439,7 @@ class Model:
 
         # Evaluate final clf-opt with all data
         print('\n> Evaluating final classifier ...')
-        self.clfs_predict(nidxs_target=self.datas[self.train_idx].nidx_train, to_eval=True, data_idxs=[self.train_idx])
+        self.clfs_predict(nidxs_target=self.datas[self.train_idx].nidx_train, to_eval=True, eval_idx=self.train_idx)
         print('** Because this is evaluating with the training data, classifier performances should be very high.')
 
         # Assign model ID - this is here so that if retrained, it would be known that it is not the same model anymore
@@ -510,7 +510,7 @@ class Model:
                     break
 
         if eval_idx is None:
-            eval_idx = [len(self.datas) - 1]
+            eval_idx = len(self.datas) - 1
 
         predictions = None
         if data.p_data and os.path.isfile(data.p_data):
@@ -529,8 +529,7 @@ class Model:
             # Transfer feature list from training data
             data.link2featidx = self.datas[self.train_idx].link2featidx
 
-            data_idxs = [self.train_idx] + eval_idx
-            predictions = self.clfs_predict(nidxs_target=data.nidx_train, data=data, to_eval=True, data_idxs=data_idxs)
+            predictions = self.clfs_predict(nidxs_target=data.nidx_train, data=data, to_eval=True, eval_idx=eval_idx)
 
         else:
             print('\n { No evaluation dataset }\n')
@@ -574,7 +573,7 @@ class Model:
                     break
 
         if pred_idx is None:
-            pred_idx = [len(self.datas) - 1]
+            pred_idx = len(self.datas) - 1
 
         result = {'p_data': data.p_data, 'p_out':'', 'pred':None, 'eval':None}
         if data.p_data and os.path.isfile(data.p_data):
@@ -604,8 +603,7 @@ class Model:
                     print('\n { Data is not multilayered, setting .train_multilayers=False }')
 
             # Predict
-            data_idxs = [self.train_idx] + pred_idx
-            predictions = self.clfs_predict(nidxs_target=data.nidx_pred, data=data, data_idxs=data_idxs)
+            predictions = self.clfs_predict(nidxs_target=data.nidx_pred, data=data, eval_idx=pred_idx)
             result['pred'] = predictions
 
             # Write results
@@ -644,7 +642,7 @@ class Model:
 
         return p_out
 
-    def clfs_predict(self, nidxs_target, data=None, to_eval=False, fill=True, nidxs_train=None, data_idxs=None):
+    def clfs_predict(self, nidxs_target, data=None, to_eval=False, fill=True, nidxs_train=None, eval_idx=None):
 
         """
         This runs predictions with all base classifiers and the final model for the nodes specified through their
@@ -663,19 +661,21 @@ class Model:
         will be given, since the base classifiers may not be able to predict for the sample or may not predict any
         labels for the sample as well.
         :param nidxs_train: nodes used in training
-        :param data_idxs: indices of data to blend
+        :param eval_idx: index of data to evaluate
         :return: A dictionary containing predictions from all the base classifiers and the final model
         """
 
-        if not data:
+        if data is None:
             data = self.datas[self.train_idx]
         train_idx0 = self.train_idx
-        eval_idx = np.argwhere([data.p_data == d.p_data for d in self.datas]).flatten()[0]
 
-        # combine training and testing data into layers of new Data object used to retrain clf-net during expansion
+        if eval_idx is None:
+            eval_idx = np.argwhere([data.p_data == d.p_data for i, d in enumerate(self.datas) if i != self.train_idx]).flatten()[0]
+
+        # Combine training and testing data into layers of new Data object used to retrain clf-net during expansion
         # The training and test data will be in different layers
         # This is so training data is not lost during expansive training iterations
-        self.datas.append(self.blend_data(idxs=data_idxs))
+        self.datas.append(self.blend_data(idxs=list({train_idx0, eval_idx})))
         blend_idx = len(self.datas) - 1
 
         # Compute expansion path
@@ -685,6 +685,10 @@ class Model:
 
         # Retain original base-classifiers
         clf_pkg = self.archive_clfs()
+
+        # Retain original multilayer state and change to train multilayers
+        train_multilayers0 = self.train_multilayers
+        self.train_multilayers = True
 
         nidxs = []
         predictions = None
@@ -771,6 +775,9 @@ class Model:
 
         # Restore base-classifiers
         self.restore_clfs(clf_pkg)
+
+        # Restore original multilayer state
+        self.train_multilayers = train_multilayers0
 
         return predictions
 
@@ -869,7 +876,8 @@ class Model:
 
         pkg = {
             'inf': self.maxinflidxratio,
-            'match': deepcopy(self.unique_lidx2labels),
+            'infhist': self.inflidxratio_history,
+            'match': deepcopy(self.unique_link2labels),
             'net': deepcopy(self.clf_net),
         }
 
@@ -878,7 +886,8 @@ class Model:
     def restore_clfs(self, pkg):
 
         self.maxinflidxratio = pkg['inf']
-        self.unique_lidx2labels = deepcopy(pkg['match'])
+        self.inflidxratio_history = pkg['infhist'].copy()
+        self.unique_link2labels = deepcopy(pkg['match'])
         self.clf_net = deepcopy(pkg['net'])
 
         return self
@@ -889,8 +898,8 @@ class Model:
             idxs = list(range(len(self.datas)))
 
         datax = Data(verbose=False)
-        datax.perlayer = True
         datax.mimic(self.datas[self.train_idx])
+        datax.perlayer = True
         datax.link2featidx = self.datas[self.train_idx].link2featidx.copy()
         n_nodes = 0
         datax.nidxconvert = dict()
@@ -1019,12 +1028,12 @@ class Model:
 
         pred_locs = []
         predictable = np.zeros(len(nidx_target), dtype=bool)
-        for i, r in enumerate(nidx_target):
-            lidx = data.nidx2lidx[r]
+        for i, n in enumerate(nidx_target):
+            links = {data.links[l] for l in data.nidx2lidx[n]}
             locs = []
-            for c in lidx:
-                if c in self.unique_lidx2labels:
-                    locs.append(self.unique_lidx2labels[c])
+            for l in links:
+                if l in self.unique_link2labels:
+                    locs.append(self.unique_link2labels[l])
             if locs:
                 locs = set.intersection(*locs)
                 if locs:
@@ -1142,7 +1151,7 @@ class Model:
 
         if self.verbose:
             print('Train clf-match: building unique link table ...')
-        self.unique_lidx2labels = self.datas[self.train_idx].gen_match_table(nidx_target=train_nidxs)
+        self.unique_link2labels = self.datas[self.train_idx].gen_match_table(nidx_target=train_nidxs)
 
         if self.verbose:
             print('Train clf-net: fitting random-forest classifier ...')
@@ -1628,15 +1637,16 @@ class Data:
         link_label_table = {}
         for nidx in nidx_target:
             labs = set(self.node_labels[nidx])
-            for lidx in self.nidx2lidx[nidx]:
-                if lidx in link_label_table:
-                    link_label_table[lidx].append(labs)
+            links = {self.links[l] for l in self.nidx2lidx[nidx]}
+            for link in links:
+                if link in link_label_table:
+                    link_label_table[link].append(labs)
                 else:
-                    link_label_table[lidx] = [labs]
+                    link_label_table[link] = [labs]
 
         # Find the links with consistent labels
-        unique_lidx2labs = {}
-        for lidx, labs in link_label_table.items():
+        unique_link2labs = {}
+        for link, labs in link_label_table.items():
             to_add = True
             if len(labs) > 0:
                 shared_labs = set.intersection(*labs)
@@ -1647,9 +1657,9 @@ class Data:
                             break
 
                     if to_add:
-                        unique_lidx2labs[lidx] = shared_labs
+                        unique_link2labs[link] = shared_labs
 
-        return unique_lidx2labs
+        return unique_link2labs
 
     def gen_features(self, nidx_target=None, perlayer=False):
 

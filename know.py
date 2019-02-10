@@ -182,17 +182,11 @@ if __name__ == '__main__':
         if not args.model:
             print('\n { Missing model file, use --mod path/to/model.pkl }\n')
         else:
-            print('\n__  Loading model \_______________________________\n  \ File: %s \n' % args.model)
-            m_pkg, _ = open_pkl(args.model)
-            m = Model(verbose=args.to_verbose)
-            m.import_model(m_pkg)
+            m = Model(verbose=args.to_verbose).load_model(args.model)
             m.metrics_avg = 'micro' if args.microavg else 'weighted'
-            m.add_data(data=args.eval_data, build=False)
+            m.add_data(data=args.eval_data, mimic=m.datas[m.train_idx])
             m.datas[-1].mimic(data=m.datas[m.train_idx])
             m.datas[-1].build_data()
-
-            print('\n__  Building data \_______________________________\n  \ File: %s \n' % args.eval_data)
-            m.train_multilayers = False
             res = m.eval(data=m.datas[-1])
 
             # set vd
