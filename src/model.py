@@ -1376,7 +1376,7 @@ class Data:
         self.min_network_size = min_network_size
         self.maxlidxratio = 0.25
         self.minlinkfreq = 1
-        self.spearman_cutoff = 0.1
+        self.spearman_cutoff = 0.05
 
         self.nidx_train = list()
         self.nidx_pred = list()
