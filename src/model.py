@@ -1221,10 +1221,10 @@ class Model:
         c = self._calc_coverage(ypred)
 
         if 'hard' not in self.aim:
-            return -(r[self.aim] - rbkg[self.aim]) * (r['f1'] - rbkg['f1']) * c * np.ceil(x)
+            return -(r[self.aim] / rbkg[self.aim]) * (r['f1'] / rbkg['f1']) * c * np.ceil(x)
         else:
             aim = self.aim.replace('hard', '')
-            return -(r[aim] - rbkg[aim]) * c * np.ceil(x)
+            return -(r[aim] / rbkg[aim]) * c * np.ceil(x)
 
     @staticmethod
     def _check_train_labels(X, y):
