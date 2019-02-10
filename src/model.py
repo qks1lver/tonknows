@@ -1685,7 +1685,7 @@ class Data:
             nidx_target = self.nidx_train.copy()
 
         if not self.link2featidx:
-            self.link2featidx = self.build_link2featidx(nidxs=nidx_target, spearman=False)
+            self.link2featidx = self.build_link2featidx(nidxs=nidx_target, spearman=True)
 
         # build link index to feature indices dictionary
         self.lidx2fidx = self.build_lidx2featidx()
