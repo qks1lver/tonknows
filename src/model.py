@@ -942,7 +942,7 @@ class Model:
             datax.nidx_pred += [k + n_nodes for k in self.datas[i].nidx_pred]
             datax.nidx_exclude += [k + n_nodes for k in self.datas[i].nidx_exclude]
             datax.links = list(set(datax.links) | set(self.datas[i].links))
-            datax.nidx2layer += [k + '-%d'%i for k in self.datas[i].nidx2layer] if self.datas[i].nidx2layer else [str(i) for _ in range(len(self.datas[i].node_labels))]
+            datax.nidx2layer += [k + '-%d'%i for k in self.datas[i].nidx2layer] if self.datas[i].nidx2layer and self.train_multilayers else [str(i) for _ in range(len(self.datas[i].node_labels))]
             datax.nidxconvert[i] = {n: n + n_nodes for n in range(len(self.datas[i].node_links))}
             n_nodes = len(datax.node_links)
 
