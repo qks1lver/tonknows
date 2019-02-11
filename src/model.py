@@ -503,14 +503,25 @@ class Model:
         :return: A dictionary containing predictions from all the base classifiers and the final model
         """
 
-        if data is None and len(self.datas) > 1:
-            for i in range(len(self.datas)):
-                if i != self.train_idx:
-                    data = self.datas[i]
-                    break
+        if data is None:
+            if len(self.datas) > 1:
+                for eval_idx in range(len(self.datas)):
+                    if eval_idx != self.train_idx:
+                        data = self.datas[eval_idx]
+                        break
+                print('\n { Evaluating with %s }\n' % data.p_data)
+
+            else:
+                data = self.datas[self.train_idx]
+                print('\n { Evaluating with training data }\n')
 
         if eval_idx is None:
-            eval_idx = len(self.datas) - 1
+            if len(self.datas) > 1:
+                for eval_idx in range(len(self.datas)):
+                    if eval_idx != self.train_idx and data.p_data == self.datas[eval_idx].p_data:
+                        break
+            else:
+                eval_idx = self.train_idx
 
         predictions = None
         if data.p_data and os.path.isfile(data.p_data):
@@ -521,13 +532,19 @@ class Model:
                 print('\n { Cannot evaluate with this data - no node with label }\n')
                 return None
 
+            # Check if data is multilayer
+            if self.train_multilayers and not data.layer2nidx:
+                self.train_multilayers = False
+                if self.verbose:
+                    print('\n { Data is not multilayered, setting .train_multilayers=False }')
+
             n_total = len(data.nidx_train)
             print('  Found %d nodes with labels' % n_total)
 
             data.composition()
 
             # Transfer feature list from training data
-            data.link2featidx = self.datas[self.train_idx].link2featidx
+            # data.link2featidx = self.datas[self.train_idx].link2featidx
 
             predictions = self.clfs_predict(nidxs_target=data.nidx_train, data=data, to_eval=True, eval_idx=eval_idx)
 
@@ -566,14 +583,25 @@ class Model:
         and the String of the report file path
         """
 
-        if data is None and len(self.datas) > 1:
-            for i in range(len(self.datas)):
-                if i != self.train_idx:
-                    data = self.datas[i]
-                    break
+        if data is None:
+            if len(self.datas) > 1:
+                for pred_idx in range(len(self.datas)):
+                    if pred_idx != self.train_idx:
+                        data = self.datas[pred_idx]
+                        break
+                print('\n { Evaluating with %s }\n' % data.p_data)
+
+            else:
+                data = self.datas[self.train_idx]
+                print('\n { Evaluating with training data }\n')
 
         if pred_idx is None:
-            pred_idx = len(self.datas) - 1
+            if len(self.datas) > 1:
+                for pred_idx in range(len(self.datas)):
+                    if pred_idx != self.train_idx and data.p_data == self.datas[pred_idx].p_data:
+                        break
+            else:
+                pred_idx = self.train_idx
 
         result = {'p_data': data.p_data, 'p_out':'', 'pred':None, 'eval':None}
         if data.p_data and os.path.isfile(data.p_data):
@@ -594,7 +622,7 @@ class Model:
             print('\n---{ Predicting for %d nodes }---\n' % n_total)
 
             # Transfer feature list from training data
-            data.link2featidx = self.datas[self.train_idx].link2featidx
+            # data.link2featidx = self.datas[self.train_idx].link2featidx
 
             # Check if data is multilayer
             if self.train_multilayers and not data.layer2nidx:
@@ -677,6 +705,10 @@ class Model:
         # This is so training data is not lost during expansive training iterations
         self.datas.append(self.blend_data(idxs=list({train_idx0, eval_idx})))
         blend_idx = len(self.datas) - 1
+        if nidxs_train is not None:
+            nidxs_train_blend = [self.datas[blend_idx].nidxconvert[train_idx0][n] for n in nidxs_train]
+        else:
+            nidxs_train_blend = [self.datas[blend_idx].nidxconvert[train_idx0][n] for n in self.datas[train_idx0].nidx_train]
 
         # Compute expansion path
         path = data.recruit(nidxs_remain=set(nidxs_target))
@@ -737,7 +769,7 @@ class Model:
                 # find expand features with evaluating data then set features in the blended data
                 if self.verbose:
                     print('\n[ Expanding ] Evaluating %d links' % len(new_links))
-                r = data.eval_lidxs([data.link2lidx[l] for l in new_links])
+                r = self.datas[blend_idx].eval_lidxs(lidxs=[self.datas[blend_idx].link2lidx[l] for l in new_links], nidxs=nidxs_train_blend)
                 accepted_links = [new_links[i] for i, b in enumerate(r) if b]
                 if self.verbose:
                     print('[ Expanding ] Accepting %d links' % len(accepted_links))
@@ -759,7 +791,7 @@ class Model:
 
                 # Compile all training nodes, which include nodes previously trained and now training in expansion
                 if nidxs_train is not None:
-                    nidxs_conv += [self.datas[blend_idx].nidxconvert[train_idx0][n] for n in nidxs_train]
+                    nidxs_conv += nidxs_train_blend
 
                 # retrain model with predictions and features from this expansion
                 if self.verbose:
@@ -899,7 +931,6 @@ class Model:
 
         datax = Data(verbose=False)
         datax.mimic(self.datas[self.train_idx])
-        datax.perlayer = True
         datax.link2featidx = self.datas[self.train_idx].link2featidx.copy()
         n_nodes = 0
         datax.nidxconvert = dict()
@@ -1132,7 +1163,7 @@ class Model:
     def _train_clfs(self, train_nidxs=None):
 
         """
-        Training the MATCH and NET classifiers with specified samples of the training data. Samples are specified by
+        Training the base classifiers with specified samples of the training data. Samples are specified by
         their node indices in the loaded .train_data Data object. If train_nidx is not specified, then all the
         trainable nodes in the .train_data Data object will be used.
 
@@ -1376,7 +1407,7 @@ class Data:
         self.min_network_size = min_network_size
         self.maxlidxratio = 0.25
         self.minlinkfreq = 1
-        self.spearman_cutoff = 0.05
+        self.spearman_cutoff = 0.1
 
         self.nidx_train = list()
         self.nidx_pred = list()
@@ -1385,7 +1416,7 @@ class Data:
         self.nidx2layer = list()
 
         self.masklayer = masklayer if masklayer else []
-        self.perlayer = False
+        self._perlayer_ = False
 
     def build_data(self):
 
@@ -1674,10 +1705,10 @@ class Data:
         if self.verbose:
             print(_header_ + 'Generating features ...')
 
-        self.perlayer = perlayer
-        if self.perlayer:
+        self._perlayer_ = perlayer
+        if self._perlayer_:
             if not self.layer2nidx:
-                self.perlayer = False
+                self._perlayer_ = False
                 if self.verbose:
                     print('  Cannot generate features per layer: No layers field in data')
 
@@ -1740,7 +1771,7 @@ class Data:
         # whether to do Spearman eval
         if spearman:
             # parallelize Spearman eval
-            r = self.eval_lidxs(lidxs=lidxs)
+            r = self.eval_lidxs(lidxs=lidxs, nidxs=nidxs)
 
             # screen for valid features
             idx = 0
@@ -1753,18 +1784,18 @@ class Data:
 
         return link2featidx
 
-    def eval_lidxs(self, lidxs):
+    def eval_lidxs(self, lidxs, nidxs=None):
 
         n_lidxs = len(lidxs)
         lidxs = np.array(lidxs)
-        y_feats = np.transpose(self.gen_labels())
+        y_feats = np.transpose(self.gen_labels(nidxs=nidxs))
         start = True
-        accepted = []
+        accepted_lidxs = []
         cutoff = self.spearman_cutoff
         r = np.zeros([n_lidxs, self.n_labels], dtype=bool)
         idx = np.ones(n_lidxs, dtype=bool)
 
-        while start or (not np.any(accepted) and cutoff <= 0.4):
+        while start or (not np.any(accepted_lidxs) and cutoff <= 0.4):
 
             if not start and cutoff <= 0.4:
                 if self.verbose:
@@ -1774,36 +1805,41 @@ class Data:
             # parallelize Spearman eval
             with Pool(maxtasksperchild=1) as p:
                 r[idx] = np.array(list(p.imap(self._eval_lidx,
-                                              zip(lidxs[idx], repeat(y_feats), repeat(cutoff)),
+                                              zip(lidxs[idx], repeat(y_feats), repeat(cutoff), repeat(nidxs)),
                                               chunksize=int(np.ceil(n_lidxs / os.cpu_count())))))
 
             # check feature coverage
-            coverage = np.sum(r, axis=0)
-            checked = np.any(r, axis=1)
-            if np.all(coverage):
-                accepted = checked
+            # coverage0 - whether all labels are covered at least once
+            # coverage1 - whether all nodes (nidxs) are covered at least once
+            coverage0 = np.any(r, axis=0)
+            checked_lidxs = np.any(r, axis=1)
+            lidxs_checked = set(lidxs[checked_lidxs])
+            coverage1 = [True if self.nidx2lidx[n] & lidxs_checked else False for n in nidxs]
+            if np.all(coverage0) and np.all(coverage1):
+                accepted_lidxs = checked_lidxs
             else:
-                idx[checked] = False
+                idx[checked_lidxs] = False
                 n_lidxs = int(np.sum(idx))
                 if not n_lidxs:
-                    accepted = checked
+                    accepted_lidxs = checked_lidxs
 
             start = False
 
-        if not np.any(accepted):
+        if not np.any(accepted_lidxs):
             if self.verbose:
                 print('  Compiling features without Spearman correlation')
-            accepted = np.ones(n_lidxs, dtype=bool)
+            accepted_lidxs = np.ones(n_lidxs, dtype=bool)
 
-        return accepted
+        return accepted_lidxs
 
     def _eval_lidx(self, arg):
 
         lidx0 = arg[0]
         yfeats = arg[1]
         cutoff = arg[2]
+        nidxs = arg[3]
 
-        x = [1 if lidx0 in self.nidx2lidx[n] else 0 for n in self.nidx_train]
+        x = [1 if lidx0 in self.nidx2lidx[n] else 0 for n in nidxs]
 
         if np.any(x):
             pvals = np.array([spearmanr(x, yi)[1] if np.any(yi) or np.all(yi) else 1. for yi in yfeats])
@@ -1840,7 +1876,7 @@ class Data:
                     # radius is assigned here
                     lidx2r[lidx] = i+1
                     if i < self.k_neighbors:
-                        if self.perlayer:
+                        if self._perlayer_:
                             newnidxs += list(self.lidx2nidx[lidx] & self.layer2nidx[self.nidx2layer[nidx]] - oldnidxs)
                         else:
                             newnidxs += list(self.lidx2nidx[lidx] - oldnidxs)
