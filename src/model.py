@@ -743,17 +743,17 @@ class Model:
 
                 # Fill (fill==True) what clf-opt did not predict with the joint solutions from base classifiers
                 if fill:
-                    coverage0 = self._calc_coverage(predictions['yopt'])
+                    coverage0 = self.calc_coverage(predictions['yopt'])
                     filling_coverage = 0.
                     if coverage0 < 1.:
                         i_missing = np.invert(np.any(self._round(predictions['yopt']), axis=1))
                         y_fill = self._y_merge(predictions=predictions, i=i_missing)
-                        filling_coverage = self._calc_coverage(y_fill) * len(y_fill) / len(i_missing)
+                        filling_coverage = self.calc_coverage(y_fill) * len(y_fill) / len(i_missing)
                         predictions['yopt'][i_missing] = y_fill
                         predictions['fill'] = filling_coverage
 
                     if self.verbose:
-                        coverage1 = self._calc_coverage(predictions['yopt'])
+                        coverage1 = self.calc_coverage(predictions['yopt'])
                         print('\n[ clf-opt ]\n  no-fill coverage: {:.1%}\n  filling: {:.1%}\n  filled coverage: {:.1%}\n'.format(coverage0, filling_coverage, coverage1))
 
             # Show scores
@@ -836,35 +836,35 @@ class Model:
 
                 # baseline
                 r = self.scores(y=predictions['ytruth'], y_pred=predictions['ybkg'])
-                coverage = self._calc_coverage(predictions['ybkg'])
+                coverage = self.calc_coverage(predictions['ybkg'])
                 print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
                     'BKG', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
                 # clf-inf
                 idx = predictions['inf']
                 r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['yinf'][idx])
-                coverage = self._calc_coverage(predictions['yinf'])
+                coverage = self.calc_coverage(predictions['yinf'])
                 print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
                     'INF', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
                 # clf-match
                 idx = predictions['match']
                 r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['ymatch'][idx])
-                coverage = self._calc_coverage(predictions['ymatch'])
+                coverage = self.calc_coverage(predictions['ymatch'])
                 print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
                     'MATCH', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
                 # clf-net
                 idx = predictions['net']
                 r = self.scores(y=predictions['ytruth'][idx], y_pred=predictions['ynet'][idx])
-                coverage = self._calc_coverage(predictions['ynet'])
+                coverage = self.calc_coverage(predictions['ynet'])
                 print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
                     'NET', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
                 # clf-opt
                 if 'yopt' in predictions:
                     r = self.scores(y=predictions['ytruth'], y_pred=predictions['yopt'])
-                    coverage = self._calc_coverage(predictions['yopt'])
+                    coverage = self.calc_coverage(predictions['yopt'])
                     print('| {:<5}  {:<7.4f}  {:<6.4f}  {:<9.4f}  {:<6.4f}  {:>8.1%} |'.format(
                         '*OPT', r['aucroc'], r['f1'], r['precision'], r['recall'], coverage))
 
@@ -880,24 +880,24 @@ class Model:
                 print('| -----  -------- |')
 
                 # baseline
-                coverage = self._calc_coverage(predictions['ybkg'])
+                coverage = self.calc_coverage(predictions['ybkg'])
                 print('| {:<5}  {:>8.1%} |'.format('BKG', coverage))
 
                 # clf-inf
-                coverage = self._calc_coverage(predictions['yinf'])
+                coverage = self.calc_coverage(predictions['yinf'])
                 print('| {:<5}  {:>8.1%} |'.format('INF', coverage))
 
                 # clf-match
-                coverage = self._calc_coverage(predictions['ymatch'])
+                coverage = self.calc_coverage(predictions['ymatch'])
                 print('| {:<5}  {:>8.1%} |'.format('MATCH', coverage))
 
                 # clf-net
-                coverage = self._calc_coverage(predictions['ynet'])
+                coverage = self.calc_coverage(predictions['ynet'])
                 print('| {:<5}  {:>8.1%} |'.format('NET', coverage))
 
                 # clf-opt
                 if 'yopt' in predictions:
-                    coverage = self._calc_coverage(predictions['yopt'])
+                    coverage = self.calc_coverage(predictions['yopt'])
                     print('| {:<5}  {:>8.1%} |'.format('*OPT', coverage))
 
                 print()
@@ -1134,7 +1134,7 @@ class Model:
 
         return np.transpose(y)[1]
 
-    def _calc_coverage(self, y):
+    def calc_coverage(self, y):
 
         """
         Calculate the coverage - the proportion of data that has labels predicted.
@@ -1258,7 +1258,7 @@ class Model:
 
         r = self.scores(y, ypred)
         rbkg = self.scores(y, ybkg)
-        c = self._calc_coverage(ypred)
+        c = self.calc_coverage(ypred)
 
         if 'hard' not in self.aim:
             return -(r[self.aim] / rbkg[self.aim]) * (r['f1'] / rbkg['f1']) * c * np.ceil(x)

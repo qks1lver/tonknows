@@ -155,7 +155,7 @@ class Analysis:
                 # Append Coverage
                 data['clf'].append(clf_code[x])
                 data['type'].append('coverage')
-                data['value'].append(model._calc_coverage(y1) * 100)
+                data['value'].append(model.calc_coverage(y1) * 100)
                 data['kcv'].append(model.kfold_cv)
                 data['irep'].append(irep)
                 data['lab'].append('all')
@@ -263,7 +263,7 @@ class Analysis:
         axs[0].title.set_y(1.15)
         if hue:
             ncol = len(data[hue].unique())
-            axs[0].legend(frameon=False, lab='upper center', bbox_to_anchor=(0.5, 1.15), ncol=ncol)
+            axs[0].legend(frameon=False, loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=ncol)
             if axs[1].legend_:
                 axs[1].legend_.remove()
 
