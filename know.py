@@ -273,5 +273,5 @@ if __name__ == '__main__':
         print('  Generated pure network: %s' % d.write(header='pure', dir_dest=_d_test_))
         print('  Generated mixed network: %s' % d.multilabel_nodes(ratio=0.4).write(header='mix', dir_dest=_d_test_))
         p_unknown = d.write(header='unknown', dir_dest=_d_test_)
-        d.multilabel_nodes(ratio=0.4).write(p_unknown, labels=False, writemode='a')
+        d.multilabel_nodes(ratio=0.1).write(p_unknown, labels=False, writemode='a')
         print('  Generated unknown network: %s' % p_unknown)
