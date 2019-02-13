@@ -119,10 +119,15 @@ class Dummy:
 
         return self
 
-    def write(self, p_data='', labels=True, writemode='w+'):
+    def write(self, p_data='', labels=True, writemode='w+', header='', dir_dest=''):
 
         if not p_data:
-            p_data = 'dummy_network-%s.tsv' % ''.join(np.random.choice(list('abcdefgh12345678'), 6))
+            dataid = ''.join(np.random.choice(list('abcdefgh12345678'), 6))
+            dir_dest += '/' if not dir_dest.endswith('/') else ''
+            if header:
+                p_data = dir_dest + 'dummy_%s-%s.tsv' % (header, dataid)
+            else:
+                p_data = dir_dest + 'dummy_network-%s.tsv' % dataid
 
         with open(p_data, writemode) as f:
 
