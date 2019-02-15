@@ -646,25 +646,41 @@ class Model:
 
     def write_predictions(self, predictions, evaluations=None, data=None, p_out=''):
 
+        """
+        Predictions are written into a .tsv file (tab-delimited). First column lists the nodes' IDs. Column 2 has the
+        ground truths at the bottom. Column 3 has the final predictions. Column 4 has predictions and ground truths when
+        available (i.e. for the samples with ground truths, those truths are used). Column 5 shows merged predictions
+        and ground truths.
+
+        :param predictions:
+        :param evaluations:
+        :param data:
+        :param p_out:
+        :return: String, output file path
+        """
+
         timestamp = datetime.now()
         if not p_out:
             p_out = data.p_data.replace('.tsv', '_tonknows-%s-%s.tsv' % (timestamp.strftime('%Y%m%d%H%M%S'), ''.join(np.random.choice(list('abcdef123456'), 6))))
 
         labels = np.array(data.labels)
         with open(p_out, 'w+') as f:
-            _ = f.write('%s\tknown_labels\tpredictions\tmerged\n' % data.columns['nodes'])
+            _ = f.write('%s\tknown_labels\tpredictions\tprior\tmerged\n' % data.columns['nodes'])
 
             # Write predictions
             for n, yopt in zip(predictions['nodes'], predictions['yopt']):
                 str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
-                _ = f.write('%s\t\t%s\t%s\n' % (n, str_opt, str_opt))
+                _ = f.write('%s\t\t%s\t%s\t%s\n' % (n, str_opt, str_opt, str_opt))
 
             # Write known labels
             if evaluations:
                 for n, yopt, ytruth in zip(evaluations['nodes'], evaluations['yopt'], evaluations['ytruth']):
-                    str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
-                    str_truth = '/'.join(labels[np.array(ytruth, dtype=bool)])
-                    _ = f.write('%s\t%s\t%s\t%s\n' % (n, str_truth, str_opt, str_truth))
+                    yopt_bool = np.array(self._round(yopt), dtype=bool)
+                    str_opt = '/'.join(labels[yopt_bool])
+                    truth_bool = np.array(ytruth, dtype=bool)
+                    str_truth = '/'.join(labels[truth_bool])
+                    str_merged = '/'.join(labels[yopt_bool | truth_bool])
+                    _ = f.write('%s\t%s\t%s\t%s\t%s\n' % (n, str_truth, str_opt, str_truth, str_merged))
 
         print('Results written to %s\n' % p_out)
 
