@@ -27,92 +27,57 @@ class Analysis:
         self.p_data = p_data if p_data and p_data.endswith('/') else p_data + '/'
         self.use_f1 = False
 
-    def compile_batch_train_results(self):
-
-        p_mods = [self.p_data + x for x in os.listdir(self.p_data) if x.endswith('.pkl')]
+    def compile_batch_train_results(self, d_mods):
+        p_mods = [d_mods + x for x in os.listdir(d_mods) if x.endswith('.pkl')]
         data = None
 
-        current_nrep = None
-        current_kcv = None
         n_samples = 0
 
         if p_mods:
-            data, n = self.compile_train_results(p_file=p_mods[0])
+            # Get first one
+            data, n = self.compile_train_results(p_mod=p_mods[0])
             n_samples += n
             print('Gathered: %s' % p_mods[0])
+
+            # Get the other ones if there are others
             if len(p_mods) > 1:
                 for p_mod in p_mods[1:]:
-                    if 'current' not in p_mod:
-                        tmp, n = self.compile_train_results(p_file=p_mod)
-                        data = data.append(tmp, ignore_index=True)
-                        n_samples += n
-                        print('Gathered: %s' % p_mod)
-                    else:
-                        mpkg, _ = open_pkl(p_file=p_mod)
-                        m = Model()
-                        m.import_model(mpkg)
-                        current_nrep = m.n_repeat
-                        current_kcv = m.kfold_cv
+                    tmp, n = self.compile_train_results(p_mod=p_mod)
+                    data = data.append(tmp, ignore_index=True)
+                    n_samples += n
+                    print('Gathered: %s' % p_mod)
 
         print('\nNumber of samples: %d\n' % n_samples)
 
-        self.plot_train_results(data=data, current_kcv=current_kcv, current_nrep=current_nrep)
-
         return data
 
-    def plot_train_results(self, data, current_kcv=None, current_nrep=None):
-
-        if self.use_f1:
-            ylabels = [['F1 (violins)', 'Predictables (% of data, bars)'], ['Precision (violins)', 'Coverage (% of data, bars)']]
-        else:
-            ylabels = None
-
-        primary = [['type', 'lab_aucroc', 1.05], ['type', 'lab_precision', 1.05]]
-        secondary = [['type', 'lab_predictable', 105], ['type', 'lab_coverage', 105]]
-
-        self.plot01(data=data, x='clf', xlabel='Classifiers', width=6, height=7, title='Classifier Performances', ylabels=ylabels)
-        self.plot01(data=data, primary=primary, secondary=secondary, x='lab', xlabel='Compartments', width=12,
-                    title='Performance per compartment', hue='clf', ylabels=ylabels)
-
-        if current_kcv and current_nrep:
-            self.plot01(data=data[(data['kcv'] == current_kcv) & (data['irep'] == current_nrep)], x='clf',
-                        xlabel='Classifiers', ylabels=ylabels, width=6, height=7,
-                        title='Classifier Performances - %d reps, %d CVs' % (current_nrep, current_kcv))
-            self.plot01(data=data[(data['kcv'] == current_kcv) & (data['irep'] == current_nrep)], primary=primary,
-                        secondary=secondary, x='lab', xlabel='Compartments', ylabels=ylabels, width=12, hue='clf',
-                        title='Performance per compartment - %d reps, %d CVs' % (current_nrep, current_kcv))
-        self.plot01(data=data, x='clf', xlabel='Classifiers', width=12, hue='kcv', title='K-CVs on Performance')
-        self.plot01(data=data[data['irep'] < 7], x='clf', xlabel='Classifiers', ylabels=ylabels, width=16, hue='irep',
-                    title='N-repeats of warm random forest on Performance')
-        self.plot01(data=data, x='clf', xlabel='Classifiers', ylabels=ylabels, width=16, hue='modelid',
-                    title='All models')
-
-        plt.show()
-
-        return
-
-    def compile_train_results(self, p_file):
-
+    @staticmethod
+    def compile_train_results(p_mod):
         n_samples = 0
 
-        m_pkg, results = open_pkl(p_file=p_file)
+        m_pkg, results = open_pkl(p_file=p_mod)
 
         model = Model()
         model.import_model(m_pkg)
+        modelid = model.id.split('-')[-1]
+        aim = model.aim if model.aim else 'no-aim'
 
-        data = {'clf':[],
-                'type':[],
-                'value':[],
-                'kcv':[],
-                'irep':[],
-                'lab':[],
-                'modelid':[]}
+        data = {'clf': [],
+                'type': [],
+                'value': [],
+                'kcv': [],
+                'irep': [],
+                'aim': [],
+                'lab': [],
+                'modelid': [],
+                }
 
         clf_code = {'ybkg': 'Baseline',
                     'yinf': 'Inf',
                     'ymatch': 'Match',
                     'ynet': 'Net',
-                    'yopt': 'Optimized'}
+                    'yopt': 'Optimized',
+                    }
 
         for x in ['ybkg', 'yinf', 'ymatch', 'ynet', 'yopt']:
 
@@ -124,6 +89,8 @@ class Analysis:
                 else:
                     idx = results['net'].values
             else:
+                # Evaluate opt on all samples
+                # this looks silly but easier to just do this with pandas dataframe
                 idx = results['net'].values | np.invert(results['net'].values)
 
             for i, (y0, y1) in enumerate(zip(results['ytruth'], results[x])):
@@ -137,11 +104,22 @@ class Analysis:
                 # Append AUC-ROC
                 data['clf'].append(clf_code[x])
                 data['type'].append('aucroc')
-                data['value'].append(r['aucroc'] if self.use_f1 else r['f1'])
+                data['value'].append(r['aucroc'])
                 data['kcv'].append(model.kfold_cv)
                 data['irep'].append(irep)
+                data['aim'].append(aim)
                 data['lab'].append('all')
-                data['modelid'].append(model.id)
+                data['modelid'].append(modelid)
+
+                # Append F1
+                data['clf'].append(clf_code[x])
+                data['type'].append('f1')
+                data['value'].append(r['f1'])
+                data['kcv'].append(model.kfold_cv)
+                data['irep'].append(irep)
+                data['aim'].append(aim)
+                data['lab'].append('all')
+                data['modelid'].append(modelid)
 
                 # Append Precision
                 data['clf'].append(clf_code[x])
@@ -149,8 +127,19 @@ class Analysis:
                 data['value'].append(r['precision'])
                 data['kcv'].append(model.kfold_cv)
                 data['irep'].append(irep)
+                data['aim'].append(aim)
                 data['lab'].append('all')
-                data['modelid'].append(model.id)
+                data['modelid'].append(modelid)
+
+                # Append Recall
+                data['clf'].append(clf_code[x])
+                data['type'].append('recall')
+                data['value'].append(r['recall'])
+                data['kcv'].append(model.kfold_cv)
+                data['irep'].append(irep)
+                data['aim'].append(aim)
+                data['lab'].append('all')
+                data['modelid'].append(modelid)
 
                 # Append Coverage
                 data['clf'].append(clf_code[x])
@@ -158,8 +147,9 @@ class Analysis:
                 data['value'].append(model.calc_coverage(y1) * 100)
                 data['kcv'].append(model.kfold_cv)
                 data['irep'].append(irep)
+                data['aim'].append(aim)
                 data['lab'].append('all')
-                data['modelid'].append(model.id)
+                data['modelid'].append(modelid)
 
                 # Append Predictable
                 data['clf'].append(clf_code[x])
@@ -167,105 +157,253 @@ class Analysis:
                 data['value'].append(predictable)
                 data['kcv'].append(model.kfold_cv)
                 data['irep'].append(irep)
+                data['aim'].append(aim)
                 data['lab'].append('all')
-                data['modelid'].append(model.id)
+                data['modelid'].append(modelid)
 
                 # AUC-ROC per lab
                 cov_idx = np.any(y1, axis=1)
                 coverages = np.sum(y0[cov_idx], axis=0) / len(y0) * 100
-                for j, (la, lp, lab) in enumerate(zip(r['aucroc_labs'] if self.use_f1 else r['f1_labs'], r['precision_labs'], model.labels)):
+                for j, lab in enumerate(model.datas[model.train_idx].labels):
                     data['clf'].append(clf_code[x])
-                    data['type'].append('lab_aucroc')
-                    data['value'].append(la)
+                    data['type'].append('aucroc_labs')
+                    data['value'].append(r['aucroc_labs'][j])
                     data['kcv'].append(model.kfold_cv)
                     data['irep'].append(irep)
+                    data['aim'].append(aim)
                     data['lab'].append(lab)
-                    data['modelid'].append(model.id)
+                    data['modelid'].append(modelid)
 
                     data['clf'].append(clf_code[x])
-                    data['type'].append('lab_precision')
-                    data['value'].append(lp)
+                    data['type'].append('f1_labs')
+                    data['value'].append(r['f1_labs'][j])
                     data['kcv'].append(model.kfold_cv)
                     data['irep'].append(irep)
+                    data['aim'].append(aim)
                     data['lab'].append(lab)
-                    data['modelid'].append(model.id)
+                    data['modelid'].append(modelid)
+
+                    data['clf'].append(clf_code[x])
+                    data['type'].append('precision_labs')
+                    data['value'].append(r['precision_labs'][j])
+                    data['kcv'].append(model.kfold_cv)
+                    data['irep'].append(irep)
+                    data['aim'].append(aim)
+                    data['lab'].append(lab)
+                    data['modelid'].append(modelid)
+
+                    data['clf'].append(clf_code[x])
+                    data['type'].append('recall_labs')
+                    data['value'].append(r['recall_labs'][j])
+                    data['kcv'].append(model.kfold_cv)
+                    data['irep'].append(irep)
+                    data['aim'].append(aim)
+                    data['lab'].append(lab)
+                    data['modelid'].append(modelid)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('lab_predictable')
                     data['value'].append(predictables[j])
                     data['kcv'].append(model.kfold_cv)
                     data['irep'].append(irep)
+                    data['aim'].append(aim)
                     data['lab'].append(lab)
-                    data['modelid'].append(model.id)
+                    data['modelid'].append(modelid)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('lab_coverage')
                     data['value'].append(coverages[j])
                     data['kcv'].append(model.kfold_cv)
                     data['irep'].append(irep)
+                    data['aim'].append(aim)
                     data['lab'].append(lab)
-                    data['modelid'].append(model.id)
+                    data['modelid'].append(modelid)
 
                 n_samples += 1
 
         return pd.DataFrame(data), n_samples
 
     @staticmethod
-    def plot01(data, x='clf', y='value', primary=None, secondary=None, hue=None, width=8, height=8, ylabels=None, title='', xlabel=''):
+    def normalize(data, clf='Optimized', bl='Baseline'):
+        # This works because all the data for each clf/bkg are loaded in the same order
+        # Normalize every metrics to baseline or whatever set as baseline except AUC-ROC
+        # Because AUC-ROC already has an absolute baseline for random at 0.5
+        clfidx = data['clf'] == clf
+        blidx = data['clf'] == bl
+
+        types = ['aucroc', 'f1', 'precision', 'recall']
+        dfx = pd.DataFrame()
+        for k in types:
+            idx = data['type'] == k
+            d = data[clfidx & idx]
+            if k == 'aucroc':
+                d['value'] = data[(data['clf'] == clf) & idx]['value'].values
+            else:
+                d['value'] = data[(data['clf'] == clf) & idx]['value'].values / data[blidx & idx]['value'].values
+            d = d.append(data[clfidx & (data['type'] == 'predictable')], ignore_index=False)
+            d = d.append(data[clfidx & (data['type'] == 'coverage')], ignore_index=False)
+            dfx = dfx.append(d, ignore_index=True)
+
+        types = ['aucroc_labs', 'f1_labs', 'precision_labs', 'recall_labs']
+        for k in types:
+            idx = data['type'] == k
+            d = data[clfidx & idx]
+            if k == 'aucroc_labs':
+                d['value'] = data[(data['clf'] == clf) & idx]['value'].values
+            else:
+                d['value'] = data[(data['clf'] == clf) & idx]['value'].values / data[blidx & idx]['value'].values
+            d = d.append(data[clfidx & (data['type'] == 'lab_predictable')], ignore_index=False)
+            d = d.append(data[clfidx & (data['type'] == 'lab_coverage')], ignore_index=False)
+            dfx = dfx.append(d, ignore_index=True)
+
+        return dfx
+
+    @staticmethod
+    def plot00(data, ax, x='clf', y='value', primary=None, secondary=None, ylabels=None, hue=None, title='',
+               scale='count', linewidth=1.5, cut=0, hue_order=None, order=None, xlabel=None):
 
         if not primary:
-            primary = [['type', 'aucroc', 1.05], ['type', 'precision', 1.05]]
+            primary = ['type', 'aucroc', 0., 1.05]
 
         if not secondary:
-            secondary = [['type', 'predictable', 105], ['type', 'coverage', 105]]
+            secondary = ['type', 'predictable', 0., 105]
 
         if not ylabels:
-            ylabels = [['AUC-ROC (violins)', 'Predictables (% of data, bars)'], ['Precision (violins)', 'Coverage (% of data, bars)']]
+            ylabels = ['AUC-ROC (violins)', 'Predictables (% of data, bars)']
 
-        sns.set(style="whitegrid", context='paper', font_scale=1.4)
-
-        fig, axs = plt.subplots(2, figsize=(width, height))
-
-        # AUC-ROC
-        sns.violinplot(data=data[data[primary[0][0]] == primary[0][1]], x=x, y=y, hue=hue, ax=axs[0], scale='count', linewidth=1.5, cut=0)
-        plt.setp(axs[0].collections, alpha=0.6)
-        axs[0].set_title(title)
-        axs[0].set_ylim([0, primary[0][2]])
-        axs[0].set_ylabel(ylabels[0][0])
-        axs[0].set_xlabel('')
-        ax2 = plt.twinx(axs[0])
-        sns.barplot(data=data[data[secondary[0][0]] == secondary[0][1]], x=x, y=y, hue=hue, ax=ax2, alpha=0.4)
-        ax2.set_ylim([0, secondary[0][2]])
-        axs[0].set_zorder(ax2.get_zorder() + 1)
-        axs[0].patch.set_visible(False)
+        sns.violinplot(data=data[data[primary[0]] == primary[1]], x=x, y=y, hue=hue, ax=ax, scale=scale,
+                       linewidth=linewidth, cut=cut, hue_order=hue_order, order=order)
+        plt.setp(ax.collections, alpha=0.6)
+        ax.set_title(title)
+        ax.set_ylim([primary[2], primary[3]])
+        ax.set_ylabel(ylabels[0])
+        ax.set_xlabel(xlabel)
+        ax2 = plt.twinx(ax)
+        sns.barplot(data=data[data[secondary[0]] == secondary[1]], x=x, y=y, hue=hue, ax=ax2, alpha=0.4,
+                    hue_order=hue_order, order=order)
+        ax2.set_ylim([secondary[2], secondary[3]])
+        ax.set_zorder(ax2.get_zorder() + 1)
+        ax.patch.set_visible(False)
         ax2.patch.set_visible(True)
-        ax2.set_ylabel(ylabels[0][1])
+        ax2.set_ylabel(ylabels[1])
         if ax2.legend_:
             ax2.legend_.remove()
 
-        # Precision
-        sns.violinplot(data=data[data[primary[1][0]] == primary[1][1]], x=x, y=y, hue=hue, ax=axs[1], scale='count', linewidth=1.5, cut=0)
-        plt.setp(axs[1].collections, alpha=0.6)
-        axs[1].set_ylim([0, primary[1][2]])
-        axs[1].set_ylabel(ylabels[1][0])
-        ax3 = plt.twinx(axs[1])
-        sns.barplot(data=data[data[secondary[1][0]] == secondary[1][1]], x=x, y=y, hue=hue, ax=ax3, alpha=0.4)
-        ax3.set_ylim([0, secondary[1][2]])
-        axs[1].set_zorder(ax3.get_zorder() + 1)
-        axs[1].patch.set_visible(False)
-        ax3.patch.set_visible(True)
-        ax3.set_ylabel(ylabels[1][1])
-        if ax3.legend_:
-            ax3.legend_.remove()
-        if xlabel:
-            axs[1].set_xlabel(xlabel)
+        return
 
-        axs[0].title.set_y(1.15)
+    def plot01(self, data, x='clf', y='value', primary=None, secondary=None, hue=None, width=12, height=7, ylabels=None,
+               title='', xlabel='', hue_order=None, order=None, baseline=None):
+
+        if not primary:
+            primary = [['type', 'aucroc', 0, 1.05],
+                       ['type', 'f1', 0, 1.05],
+                       ['type', 'precision', 0, 1.05],
+                       ['type', 'recall', 0, 1.05],
+                       ]
+
+        if not secondary:
+            secondary = [['type', 'predictable', 0, 105],
+                         ['type', 'predictable', 0, 105],
+                         ['type', 'coverage', 0, 105],
+                         ['type', 'coverage', 0, 105],
+                         ]
+
+        if not ylabels:
+            ylabels = [['AUC-ROC (violins)', 'Predictables (% of data, bars)'],
+                       ['F1 (violins)', 'Predictables (% of data, bars)'],
+                       ['Precision (violins)', 'Coverage (% of data, bars)'],
+                       ['Recall (violins)', 'Coverage (% of data, bars)'],
+                       ]
+
+        fig, axs = plt.subplots(2, 2, figsize=(width, height))
+        fig.suptitle(title, y=1.05)
+
+        # AUC-ROC
+        self.plot00(data, axs[0, 0], primary=primary[0], secondary=secondary[0], ylabels=ylabels[0], x=x, y=y, hue=hue,
+               hue_order=hue_order, order=order, xlabel=xlabel)
+
+        # F1
+        self.plot00(data, axs[0, 1], primary=primary[1], secondary=secondary[1], ylabels=ylabels[1], x=x, y=y, hue=hue,
+               hue_order=hue_order, order=order, xlabel=xlabel)
+
+        # Precision
+        self.plot00(data, axs[1, 0], primary=primary[2], secondary=secondary[2], ylabels=ylabels[2], x=x, y=y, hue=hue,
+               hue_order=hue_order, order=order, xlabel=xlabel)
+
+        # Recall
+        self.plot00(data, axs[1, 1], primary=primary[3], secondary=secondary[3], ylabels=ylabels[3], x=x, y=y, hue=hue,
+               hue_order=hue_order, order=order, xlabel=xlabel)
+
         if hue:
-            ncol = len(data[hue].unique())
-            axs[0].legend(frameon=False, loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=ncol)
-            if axs[1].legend_:
-                axs[1].legend_.remove()
+            axs[0, 1].legend(frameon=False, loc='upper left', bbox_to_anchor=(1.2, 1.), ncol=1)
+            axs[0, 0].legend_.remove()
+            axs[1, 0].legend_.remove()
+            axs[1, 1].legend_.remove()
+
+        if baseline:
+            if baseline[0]:
+                axs[0,0].axhline(y=baseline[0])
+            if baseline[1]:
+                axs[0,1].axhline(y=baseline[1])
+            if baseline[2]:
+                axs[1,0].axhline(y=baseline[2])
+            if baseline[3]:
+                axs[1,1].axhline(y=baseline[3])
+
+        fig.tight_layout(w_pad=1)
+
+        plt.draw()
+
+        return
+
+    def plot02(self, data, x='clf', y='value', primary=None, secondary=None, hue=None, width=12, height=7, ylabels=None,
+               title='', xlabel='', hue_order=None):
+
+        if not primary:
+            primary = [['type', 'aucroc', 0, 1.05],
+                       ['type', 'f1', 0, 1.05],
+                       ['type', 'precision', 0, 1.05],
+                       ['type', 'recall', 0, 1.05],
+                       ]
+
+        if not secondary:
+            secondary = [['type', 'predictable', 0, 105],
+                         ['type', 'predictable', 0, 105],
+                         ['type', 'coverage', 0, 105],
+                         ['type', 'coverage', 0, 105],
+                         ]
+
+        if not ylabels:
+            ylabels = [['AUC-ROC (violins)', 'Predictables (% of data, bars)'],
+                       ['F1 (violins)', 'Predictables (% of data, bars)'],
+                       ['Precision (violins)', 'Coverage (% of data, bars)'],
+                       ['Recall (violins)', 'Coverage (% of data, bars)'],
+                       ]
+
+        fig, axs = plt.subplots(1, 4, figsize=(width, height))
+        fig.suptitle(title, y=1.05)
+
+        # AUC-ROC
+        self.plot00(data, axs[0], primary=primary[0], secondary=secondary[0], ylabels=ylabels[0], x=x, y=y, hue=hue,
+               hue_order=hue_order, xlabel=xlabel)
+
+        # F1
+        self.plot00(data, axs[1], primary=primary[1], secondary=secondary[1], ylabels=ylabels[1], x=x, y=y, hue=hue,
+               hue_order=hue_order, xlabel=xlabel)
+
+        # Precision
+        self.plot00(data, axs[2], primary=primary[2], secondary=secondary[2], ylabels=ylabels[2], x=x, y=y, hue=hue,
+               hue_order=hue_order, xlabel=xlabel)
+
+        # Recall
+        self.plot00(data, axs[3], primary=primary[3], secondary=secondary[3], ylabels=ylabels[3], x=x, y=y, hue=hue,
+               hue_order=hue_order, xlabel=xlabel)
+
+        if hue:
+            axs[3].legend(frameon=False, loc='upper left', bbox_to_anchor=(1.2, 1.), ncol=1)
+            axs[0].legend_.remove()
+            axs[1].legend_.remove()
+            axs[2].legend_.remove()
 
         fig.tight_layout(w_pad=1)
 
