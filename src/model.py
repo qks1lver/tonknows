@@ -273,7 +273,7 @@ class Model:
 
                 # Eval
                 self.train_multilayers = False
-                res = self.eval(data=self.datas[test_idx], eval_idx=[test_idx])
+                res = self.eval(data=self.datas[test_idx], eval_idx=test_idx)
                 res[self.columns['layers']] = layer
                 res_final = res_final.append(res, ignore_index=True)
 
@@ -722,6 +722,7 @@ class Model:
             # Still doesn't find the right data
             if eval_idx is None:
                 print('\n  { Cannot find eval data }\n')
+                return None
 
         # Combine training and testing data into layers of new Data object used to retrain clf-net during expansion
         # The training and test data will be in different layers
