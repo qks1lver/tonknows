@@ -714,7 +714,14 @@ class Model:
         train_idx0 = self.train_idx
 
         if eval_idx is None:
-            eval_idx = np.argwhere([data.p_data == d.p_data for i, d in enumerate(self.datas) if i != self.train_idx]).flatten()[0]
+            for i, d in enumerate(self.datas):
+                if i != self.train_idx and data.p_data == d.p_data:
+                    eval_idx = i
+                    break
+
+            # Still doesn't find the right data
+            if eval_idx is None:
+                print('\n  { Cannot find eval data }\n')
 
         # Combine training and testing data into layers of new Data object used to retrain clf-net during expansion
         # The training and test data will be in different layers
