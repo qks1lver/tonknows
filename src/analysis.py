@@ -61,6 +61,7 @@ class Analysis:
         model.import_model(m_pkg)
         modelid = model.id.split('-')[-1]
         aim = model.aim if model.aim else 'no-aim'
+        filename = os.path.split(p_mod)[1]
 
         data = {'clf': [],
                 'type': [],
@@ -70,6 +71,7 @@ class Analysis:
                 'aim': [],
                 'lab': [],
                 'modelid': [],
+                'file':[],
                 }
 
         clf_code = {'ybkg': 'Baseline',
@@ -109,7 +111,6 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
-                data['modelid'].append(modelid)
 
                 # Append F1
                 data['clf'].append(clf_code[x])
@@ -119,7 +120,6 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
-                data['modelid'].append(modelid)
 
                 # Append Precision
                 data['clf'].append(clf_code[x])
@@ -129,7 +129,6 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
-                data['modelid'].append(modelid)
 
                 # Append Recall
                 data['clf'].append(clf_code[x])
@@ -139,7 +138,6 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
-                data['modelid'].append(modelid)
 
                 # Append Coverage
                 data['clf'].append(clf_code[x])
@@ -149,7 +147,6 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
-                data['modelid'].append(modelid)
 
                 # Append Predictable
                 data['clf'].append(clf_code[x])
@@ -159,7 +156,6 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
-                data['modelid'].append(modelid)
 
                 # AUC-ROC per lab
                 cov_idx = np.any(y1, axis=1)
@@ -172,7 +168,6 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
-                    data['modelid'].append(modelid)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('f1_labs')
@@ -181,7 +176,6 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
-                    data['modelid'].append(modelid)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('precision_labs')
@@ -190,7 +184,6 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
-                    data['modelid'].append(modelid)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('recall_labs')
@@ -199,7 +192,6 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
-                    data['modelid'].append(modelid)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('lab_predictable')
@@ -208,7 +200,6 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
-                    data['modelid'].append(modelid)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('lab_coverage')
@@ -217,9 +208,11 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
-                    data['modelid'].append(modelid)
 
                 n_samples += 1
+
+        data['modelid'] = modelid
+        data['file'] = filename
 
         return pd.DataFrame(data), n_samples
 
