@@ -74,6 +74,11 @@ class Analysis:
                 'file':[],
                 }
 
+        layerkey = None
+        if model.columns['layers'] in results.columns:
+            layerkey = model.columns['layers']
+            data['layers'] = []
+
         clf_code = {'ybkg': 'Baseline',
                     'yinf': 'Inf',
                     'ymatch': 'Match',
@@ -92,16 +97,25 @@ class Analysis:
                     idx = results['net'].values
             else:
                 # Evaluate opt on all samples
-                # this looks silly but easier to just do this with pandas dataframe
+                # this looks silly but easier to just do this given how I stores the arrays in pandas dataframe
                 idx = results['net'].values | np.invert(results['net'].values)
 
+            irep = 0
             for i, (y0, y1) in enumerate(zip(results['ytruth'], results[x])):
 
                 r = model.scores(y0[idx[i]], y1[idx[i]])
                 predictable = sum(idx[i]) / len(idx[i]) * 100
                 predictables = np.sum(y0[idx[i]], axis=0) / len(y0) * 100
+                vlayer = results[layerkey][i] if layerkey else None
 
-                irep = i // model.kfold_cv + 1
+                if layerkey:
+                    # This is a bit more complicated
+                    # For each layer, there n-reps on all other layers and an eval on the one-outed layer
+                    # The one-outed layer should not count since it didn't participate in training
+                    j = i % (model.kfold_cv * model.n_repeat + 1)
+                    irep += 1 if j % model.kfold_cv == 0 and j != (model.kfold_cv * model.n_repeat) else 0
+                else:
+                    irep = i // model.kfold_cv + 1
 
                 # Append AUC-ROC
                 data['clf'].append(clf_code[x])
@@ -111,6 +125,8 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
+                if layerkey:
+                    data['layers'].append(vlayer)
 
                 # Append F1
                 data['clf'].append(clf_code[x])
@@ -120,6 +136,8 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
+                if layerkey:
+                    data['layers'].append(vlayer)
 
                 # Append Precision
                 data['clf'].append(clf_code[x])
@@ -129,6 +147,8 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
+                if layerkey:
+                    data['layers'].append(vlayer)
 
                 # Append Recall
                 data['clf'].append(clf_code[x])
@@ -138,6 +158,8 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
+                if layerkey:
+                    data['layers'].append(vlayer)
 
                 # Append Coverage
                 data['clf'].append(clf_code[x])
@@ -147,6 +169,8 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
+                if layerkey:
+                    data['layers'].append(vlayer)
 
                 # Append Predictable
                 data['clf'].append(clf_code[x])
@@ -156,6 +180,8 @@ class Analysis:
                 data['irep'].append(irep)
                 data['aim'].append(aim)
                 data['lab'].append('all')
+                if layerkey:
+                    data['layers'].append(vlayer)
 
                 # AUC-ROC per lab
                 cov_idx = np.any(y1, axis=1)
@@ -168,6 +194,8 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
+                    if layerkey:
+                        data['layers'].append(vlayer)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('f1_labs')
@@ -176,6 +204,8 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
+                    if layerkey:
+                        data['layers'].append(vlayer)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('precision_labs')
@@ -184,6 +214,8 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
+                    if layerkey:
+                        data['layers'].append(vlayer)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('recall_labs')
@@ -192,6 +224,8 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
+                    if layerkey:
+                        data['layers'].append(vlayer)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('lab_predictable')
@@ -200,6 +234,8 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
+                    if layerkey:
+                        data['layers'].append(vlayer)
 
                     data['clf'].append(clf_code[x])
                     data['type'].append('lab_coverage')
@@ -208,6 +244,8 @@ class Analysis:
                     data['irep'].append(irep)
                     data['aim'].append(aim)
                     data['lab'].append(lab)
+                    if layerkey:
+                        data['layers'].append(vlayer)
 
                 n_samples += 1
 
@@ -229,25 +267,21 @@ class Analysis:
         for k in types:
             idx = data['type'] == k
             d = data[clfidx & idx]
-            if k == 'aucroc':
-                d['value'] = data[(data['clf'] == clf) & idx]['value'].values
-            else:
-                d['value'] = data[(data['clf'] == clf) & idx]['value'].values / data[blidx & idx]['value'].values
-            d = d.append(data[clfidx & (data['type'] == 'predictable')], ignore_index=False)
-            d = d.append(data[clfidx & (data['type'] == 'coverage')], ignore_index=False)
+            if k != 'aucroc':
+                d['value'] = data[clfidx & idx]['value'].values - data[blidx & idx]['value'].values
             dfx = dfx.append(d, ignore_index=True)
+        dfx = dfx.append(data[clfidx & (data['type'] == 'predictable')], ignore_index=True)
+        dfx = dfx.append(data[clfidx & (data['type'] == 'coverage')], ignore_index=True)
 
         types = ['aucroc_labs', 'f1_labs', 'precision_labs', 'recall_labs']
         for k in types:
             idx = data['type'] == k
             d = data[clfidx & idx]
-            if k == 'aucroc_labs':
-                d['value'] = data[(data['clf'] == clf) & idx]['value'].values
-            else:
-                d['value'] = data[(data['clf'] == clf) & idx]['value'].values / data[blidx & idx]['value'].values
-            d = d.append(data[clfidx & (data['type'] == 'lab_predictable')], ignore_index=False)
-            d = d.append(data[clfidx & (data['type'] == 'lab_coverage')], ignore_index=False)
+            if k != 'aucroc_labs':
+                d['value'] = data[clfidx & idx]['value'].values - data[blidx & idx]['value'].values
             dfx = dfx.append(d, ignore_index=True)
+        dfx = dfx.append(data[clfidx & (data['type'] == 'lab_predictable')], ignore_index=True)
+        dfx = dfx.append(data[clfidx & (data['type'] == 'lab_coverage')], ignore_index=True)
 
         return dfx
 
@@ -285,7 +319,7 @@ class Analysis:
         return
 
     def plot01(self, data, x='clf', y='value', primary=None, secondary=None, hue=None, width=12, height=7, ylabels=None,
-               title='', xlabel='', hue_order=None, order=None, baseline=None):
+               title='', xlabel='', hue_order=None, order=None, baseline=None, xtickrotate=None):
 
         if not primary:
             primary = [['type', 'aucroc', 0, 1.05],
@@ -334,14 +368,20 @@ class Analysis:
             axs[1, 1].legend_.remove()
 
         if baseline:
-            if baseline[0]:
-                axs[0,0].axhline(y=baseline[0])
-            if baseline[1]:
+            if baseline[0] is not None:
+                axs[0,0].axhline(y=baseline[0], linestyle='--')
+            if baseline[1] is not None:
                 axs[0,1].axhline(y=baseline[1])
-            if baseline[2]:
+            if baseline[2] is not None:
                 axs[1,0].axhline(y=baseline[2])
-            if baseline[3]:
+            if baseline[3] is not None:
                 axs[1,1].axhline(y=baseline[3])
+
+        if xtickrotate:
+            axs[0,0].set_xticklabels(axs[0,0].get_xticklabels(), rotation=xtickrotate, ha='right')
+            axs[0,1].set_xticklabels(axs[0,1].get_xticklabels(), rotation=xtickrotate, ha='right')
+            axs[1,0].set_xticklabels(axs[1,0].get_xticklabels(), rotation=xtickrotate, ha='right')
+            axs[1,1].set_xticklabels(axs[1,1].get_xticklabels(), rotation=xtickrotate, ha='right')
 
         fig.tight_layout(w_pad=1)
 
@@ -350,7 +390,7 @@ class Analysis:
         return
 
     def plot02(self, data, x='clf', y='value', primary=None, secondary=None, hue=None, width=12, height=7, ylabels=None,
-               title='', xlabel='', hue_order=None):
+               title='', xlabel='', hue_order=None, baseline=None, xtickrotate=None, ylog=False):
 
         if not primary:
             primary = [['type', 'aucroc', 0, 1.05],
@@ -397,6 +437,27 @@ class Analysis:
             axs[0].legend_.remove()
             axs[1].legend_.remove()
             axs[2].legend_.remove()
+
+        if baseline:
+            if baseline[0] is not None:
+                axs[0].axhline(y=baseline[0], linestyle='--')
+            if baseline[1] is not None:
+                axs[1].axhline(y=baseline[1])
+            if baseline[2] is not None:
+                axs[2].axhline(y=baseline[2])
+            if baseline[3] is not None:
+                axs[3].axhline(y=baseline[3])
+
+        if xtickrotate:
+            axs[0].set_xticklabels(axs[0].get_xticklabels(), rotation=xtickrotate, ha='right')
+            axs[1].set_xticklabels(axs[1].get_xticklabels(), rotation=xtickrotate, ha='right')
+            axs[2].set_xticklabels(axs[2].get_xticklabels(), rotation=xtickrotate, ha='right')
+            axs[3].set_xticklabels(axs[3].get_xticklabels(), rotation=xtickrotate, ha='right')
+
+        if ylog:
+            axs[1].set(yscale='log')
+            axs[2].set(yscale='log')
+            axs[3].set(yscale='log')
 
         fig.tight_layout(w_pad=1)
 
