@@ -193,6 +193,15 @@ if __name__ == '__main__':
             vd = {'m': 'loaded model (Model class)',
                   'res': 'evaluation results (dictionary)'}
 
+            if args.save and res:
+                print('\n__  Saving results to pickle \_______________________________')
+                res_id = gen_id()
+                print('  \ Result ID: %s' % res_id)
+                p_out = args.eval_data.replace('.tsv', '-tonknows_eval-%s.pkl' % res_id)
+                save_pkl(p_file=p_out, content=res)
+            elif args.save:
+                print('\n { No save: no evaluation - likely because no nodes to evaluate with }\n')
+
     # Predict ------------------------------------------------------------------------------------------------------
     if args.pred_data:
 
@@ -205,7 +214,7 @@ if __name__ == '__main__':
 
                 # set vd
                 vd = {'m': 'loaded model (Model class)',
-                      'res': 'prediction results (list of dictionaries)'}
+                      'res': 'prediction results (dictionary)'}
 
                 # path to save .pkl if saving
                 p_out_dir = os.path.dirname(res[0]['p_data']) if res else None
@@ -224,15 +233,14 @@ if __name__ == '__main__':
                 vd = {'m': 'loaded model (Model class)',
                       'res': 'prediction results (dictionary)'}
 
-                # path to save .pkl if saving
-                p_out_dir = os.path.dirname(res['p_data']) if res['pred'] else None
-
-            if args.save and p_out_dir:
+            if args.save and res['pred']:
                 print('\n__  Saving results to pickle \_______________________________')
                 res_id = gen_id()
                 print('  \ Result ID: %s' % res_id)
-                p_out = '%s/tonknows_results-%s.pkl' % (p_out_dir, res_id)
+                p_out = args.pred_data.replace('.tsv', '-tonknows_pred-%s.pkl' % res_id)
                 save_pkl(p_file=p_out, content=res)
+            elif args.save:
+                print('\n { No save: no prediction - likely because no nodes to predict for }\n')
 
     # Open --------------------------------------------------------------------------------------------------------
     if args.open:

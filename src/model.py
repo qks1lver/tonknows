@@ -543,9 +543,6 @@ class Model:
 
             data.composition()
 
-            # Transfer feature list from training data
-            # data.link2featidx = self.datas[self.train_idx].link2featidx
-
             predictions = self.clfs_predict(nidxs_target=data.nidx_train, data=data, to_eval=True, eval_idx=eval_idx)
 
         else:
@@ -620,9 +617,6 @@ class Model:
 
             n_total = len(data.nidx_pred)
             print('\n---{ Predicting for %d nodes }---\n' % n_total)
-
-            # Transfer feature list from training data
-            # data.link2featidx = self.datas[self.train_idx].link2featidx
 
             # Check if data is multilayer
             if self.train_multilayers and not data.layer2nidx:
