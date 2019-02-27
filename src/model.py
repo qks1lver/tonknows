@@ -655,7 +655,7 @@ class Model:
 
         timestamp = datetime.now()
         if not p_out:
-            p_out = data.p_data.replace('.tsv', '_tonknows-%s-%s.tsv' % (timestamp.strftime('%Y%m%d%H%M%S'), ''.join(np.random.choice(list('abcdef123456'), 6))))
+            p_out = data.p_data.replace('.tsv', '-tonknows_pred-%s-%s.tsv' % (timestamp.strftime('%Y%m%d%H%M%S'), ''.join(np.random.choice(list('abcdef123456'), 6))))
 
         labels = np.array(data.labels)
         with open(p_out, 'w+') as f:
