@@ -56,7 +56,8 @@ if __name__ == '__main__':
     parser.add_argument('--td', dest='train_data', default='', help= 'Train data file')
     parser.add_argument('--ed', dest='eval_data', default='', help='Evaluation data file')
     parser.add_argument('--pd', dest='pred_data', default='', help='Data to predict for')
-    parser.add_argument('--out', dest='model_out', default='', help='Output model filename override')
+    parser.add_argument('--out', dest='out', default='', help='Output model filename override')
+    parser.add_argument('--outdir', dest='outdir', default=None, help='Output directory for predictions')
     parser.add_argument('--microavg', dest='microavg', action='store_true', help='Use micro average instead of weighted')
     parser.add_argument('--cvlayers', dest='cv_layers', action='store_true', help='CV over each layer')
     parser.add_argument('--multilayer', dest='multilayer', action='store_true', help='Train multilayer')
@@ -157,8 +158,8 @@ if __name__ == '__main__':
                     os.rename(_p_current_model_, _p_current_model_.replace('-current',''))
                 current_tag = '-current'
 
-            if args.model_out:
-                filename = args.model_out
+            if args.out:
+                filename = args.out
             else:
                 filename = m.id
 
@@ -226,7 +227,7 @@ if __name__ == '__main__':
                 m = Model(verbose=args.to_verbose).load_model(p_mod=args.model)
                 m.metrics_avg = 'micro' if args.microavg else 'weighted'
                 m.add_data(data=args.pred_data, mimic=m.datas[m.train_idx])
-                res = m.predict(data=m.datas[-1], write=not args.no_write)
+                res = m.predict(data=m.datas[-1], write=not args.no_write, d_out=args.outdir)
                 res['model'] = args.model
 
                 # set vd
@@ -235,9 +236,12 @@ if __name__ == '__main__':
 
             if args.save and res['pred']:
                 print('\n__  Saving results to pickle \_______________________________')
-                res_id = gen_id()
-                print('  \ Result ID: %s' % res_id)
-                p_out = args.pred_data.replace('.tsv', '-tonknows_pred-%s.pkl' % res_id)
+                if res['p_out']:
+                    p_out = res['p_out'].replace('.tsv', '.pkl')
+                else:
+                    res_id = gen_id()
+                    print('  \ Result ID: %s' % res_id)
+                    p_out = args.pred_data.replace('.tsv', '-tonknows_pred-%s.pkl' % res_id)
                 save_pkl(p_file=p_out, content=res)
             elif args.save:
                 print('\n { No save: no prediction - likely because no nodes to predict for }\n')
@@ -267,7 +271,7 @@ if __name__ == '__main__':
 
         if args.analyze == 'precision' and args.pred_data and args.pred_data is not 'param':
             # Generate a series of predictions with incremental rounding cutoff (greater precision)
-            Analysis().step_precisions(d_out=args.model_out, model=m, data=m.datas[-1], predictions=res['pred'], evaluations=res['eval'])
+            Analysis().step_precisions(d_out=args.out, model=m, data=m.datas[-1], predictions=res['pred'], evaluations=res['eval'])
 
 
     # Enable interaction \______________________________________________________________________________________________

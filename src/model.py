@@ -563,7 +563,7 @@ class Model:
 
         return results
 
-    def predict(self, data=None, write=True, p_out='', pred_idx=None):
+    def predict(self, data=None, write=True, p_out=None, d_out=None, pred_idx=None):
 
         """
         The is predicting with a prediction data or the specified Data object. If there are nodes with label
@@ -630,7 +630,7 @@ class Model:
 
             # Write results
             if write:
-                p_out = self.write_predictions(predictions=predictions, evaluations=evaluations, data=data, p_out=p_out)
+                p_out = self.write_predictions(predictions=predictions, evaluations=evaluations, data=data, p_out=p_out, d_out=d_out)
                 result['p_out'] = p_out
 
         else:
@@ -638,7 +638,7 @@ class Model:
 
         return result
 
-    def write_predictions(self, predictions, evaluations=None, data=None, p_out=''):
+    def write_predictions(self, predictions, evaluations=None, data=None, p_out=None, d_out=None):
 
         """
         Predictions are written into a .tsv file (tab-delimited). First column lists the nodes' IDs. Column 2 has the
@@ -650,12 +650,23 @@ class Model:
         :param evaluations:
         :param data:
         :param p_out:
+        :param d_out:
         :return: String, output file path
         """
 
+        if not d_out:
+            d_out = os.path.split(data.p_data)[0]
+        elif not os.path.isdir(d_out):
+            os.makedirs(d_out)
+            if self.verbose:
+                print('\nCreated folder: %s ' % d_out)
+
+        d_out += '/' if not d_out.endswith('/') else ''
+
         timestamp = datetime.now()
         if not p_out:
-            p_out = data.p_data.replace('.tsv', '-tonknows_pred-%s-%s.tsv' % (timestamp.strftime('%Y%m%d%H%M%S'), ''.join(np.random.choice(list('abcdef123456'), 6))))
+            tmp = data.p_data.replace('.tsv', '-tonknows_pred-%s-%s.tsv' % (timestamp.strftime('%Y%m%d%H%M%S'), ''.join(np.random.choice(list('abcdef123456'), 6))))
+            p_out = d_out + os.path.split(tmp)[1]
 
         labels = np.array(data.labels)
         with open(p_out, 'w+') as f:
