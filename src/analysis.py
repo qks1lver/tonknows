@@ -75,8 +75,8 @@ class Analysis:
                 }
 
         layerkey = None
-        if model.columns['layers'] in results.columns:
-            layerkey = model.columns['layers']
+        if model.datas[model.train_idx].columns['layers'] in results.columns:
+            layerkey = model.datas[model.train_idx].columns['layers']
             data['layers'] = []
 
         clf_code = {'ybkg': 'Baseline',
