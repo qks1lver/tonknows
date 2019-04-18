@@ -669,23 +669,27 @@ class Model:
             p_out = d_out + os.path.split(tmp)[1]
 
         labels = np.array(data.labels)
-        with open(p_out, 'w+') as f:
-            _ = f.write('%s\tknown_labels\tpredictions\tprior\tmerged\n' % data.columns['nodes'])
 
-            # Write predictions
-            for n, yopt in zip(predictions['nodes'], predictions['yopt']):
-                str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
-                _ = f.write('%s\t\t%s\t%s\t%s\n' % (n, str_opt, str_opt, str_opt))
+        # compile predictions
+        yopts = ['' for _ in range(len(data.nodes))]
 
-            # Write known labels
-            if evaluations:
-                for n, yopt, ytruth in zip(evaluations['nodes'], evaluations['yopt'], evaluations['ytruth']):
-                    yopt_bool = np.array(self._round(yopt), dtype=bool)
-                    str_opt = '/'.join(labels[yopt_bool])
-                    truth_bool = np.array(ytruth, dtype=bool)
-                    str_truth = '/'.join(labels[truth_bool])
-                    str_merged = '/'.join(labels[yopt_bool | truth_bool])
-                    _ = f.write('%s\t%s\t%s\t%s\t%s\n' % (n, str_truth, str_opt, str_truth, str_merged))
+        for idx, yopt in zip(data.nidx_pred, predictions['yopt']):
+            str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
+            yopts[idx] = str_opt
+
+        # compile known
+        if evaluations:
+            for idx, yopt, ytruth in zip(data.nidx_train, evaluations['yopt'], evaluations['ytruth']):
+                yopt_bool = np.array(self._round(yopt), dtype=bool)
+                truth_bool = np.array(ytruth, dtype=bool)
+                str_opt = '/'.join(labels[yopt_bool | truth_bool])
+                yopts[idx] = str_opt
+
+        # Add truth and predictions to dataframe
+        df = data.df.assign(predictions=yopts)
+
+        # Write predictions
+        df.to_csv(p_out, sep='\t', index=False)
 
         print('Results written to %s\n' % p_out)
 
@@ -1410,6 +1414,7 @@ class Data:
         self._header_ = 'Data.'
 
         self.p_data = p_data
+        self.df = pd.DataFrame()
         self.exclude_links = exclude_links if exclude_links else []
         self.labels = labels if labels else []
         self.n_labels = len(labels) if labels else 0
@@ -1518,8 +1523,8 @@ class Data:
         all_labels = []
         has_other = False
         func = lambda x: [i for i in x.strip().split('/') if i] if isinstance(x, str) else []
-        df = pd.read_table(self.p_data)
-        df = df.applymap(func=func)
+        self.df = pd.read_table(self.p_data)
+        df = self.df.applymap(func=func)
         has_node = self.columns['nodes'] in df
         has_layer = self.columns['layers'] in df
 
