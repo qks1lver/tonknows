@@ -673,20 +673,26 @@ class Model:
         # compile predictions
         yopts = ['' for _ in range(len(data.nodes))]
 
-        for idx, yopt in zip(data.nidx_pred, predictions['yopt']):
-            str_opt = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
-            yopts[idx] = str_opt
+        # compile baseline
+        ybkgs = ['' for _ in range(len(data.nodes))]
+
+        for idx, yopt, ybkg in zip(predictions['nidxs'], predictions['yopt'], predictions['ybkg']):
+            yopts[idx] = '/'.join(labels[np.array(self._round(yopt), dtype=bool)])
+            ybkgs[idx] = '/'.join(labels[np.array(self._round(ybkg), dtype=bool)])
 
         # compile known
         if evaluations:
-            for idx, yopt, ytruth in zip(data.nidx_train, evaluations['yopt'], evaluations['ytruth']):
+            for idx, yopt, ytruth, ybkg in zip(evaluations['nidxs'], evaluations['yopt'], evaluations['ytruth'], predictions['ybkg']):
                 yopt_bool = np.array(self._round(yopt), dtype=bool)
                 truth_bool = np.array(ytruth, dtype=bool)
-                str_opt = '/'.join(labels[yopt_bool | truth_bool])
-                yopts[idx] = str_opt
+                yopts[idx] = '/'.join(labels[yopt_bool | truth_bool])
+                ybkgs[idx] = '/'.join(labels[np.array(self._round(ybkg), dtype=bool)])
 
         # Add truth and predictions to dataframe
         df = data.df.assign(predictions=yopts)
+
+        # Add baseline to dataframe
+        df = df.assign(baseline=ybkgs)
 
         # Write predictions
         df.to_csv(p_out, sep='\t', index=False)
