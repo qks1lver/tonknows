@@ -844,6 +844,9 @@ class Model:
         # Restore original multilayer state
         self.train_multilayers = train_multilayers0
 
+        # Node indices
+        predictions['nidxs'] = np.array([i for j in path for i in j['nidxs']])
+
         return predictions
 
     def _y_merge(self, predictions, i=None):
