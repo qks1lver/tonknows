@@ -70,6 +70,7 @@ if __name__ == '__main__':
     parser.add_argument('--maxlinkratio', dest='maxlinkratio', default=0.25, type=float, help='Maximum link ratio to use as link')
     parser.add_argument('--minlinkfreq', dest='minlinkfreq', default=1, type=int, help='Minimum link frequency to use as link')
     parser.add_argument('--aim', dest='aim', default=None, help='To specifiy aim of the model')
+    parser.add_argument('--radius', dest='radius', default=2, type=int, help='To specifiy k-neighber radius of the net clf')
     parser.add_argument('--save', dest='save', action='store_true', help='Save data')
     parser.add_argument('--open', dest='open', default='', help='Open saved pickle data')
     parser.add_argument('--shell', dest='shell', action='store_true', help='Python shell interactive session')
@@ -114,6 +115,7 @@ if __name__ == '__main__':
                   verbose=args.to_verbose,
                   columns=param['columns'] if args.param and 'columns' in param else None,
                   aim=args.aim)
+        m.k_neighbors = args.radius
         m.maxlidxratio = args.maxlinkratio
         m.minlinkfreq = args.minlinkfreq
         m.metrics_avg = 'micro' if args.microavg else 'weighted'
