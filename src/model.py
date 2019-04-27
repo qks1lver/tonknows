@@ -1771,7 +1771,7 @@ class Data:
             X = np.array(list(r))
 
         # identify predictables
-        predictable = np.invert(np.all(X == 0, axis=1))
+        predictable = np.any(X>0, axis=1)
 
         return X, self.gen_labels(nidxs=nidx_target), predictable
 
