@@ -607,7 +607,7 @@ class Model:
 
             if not data.nidx_pred:
                 print('\n { Nothing to predict for - no node without labels }\n')
-                return p_out
+                return result
 
             evaluations = None
             if data.nidx_train:
